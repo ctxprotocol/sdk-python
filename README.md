@@ -225,15 +225,24 @@ if is_protected_mcp_method(body["method"]):
         raise HTTPException(status_code=401, detail="Unauthorized")
 ```
 
-### Security Model
+### MCP Security Model
 
-| MCP Method | Auth Required | Reason |
-|------------|---------------|--------|
-| `tools/list` | ❌ No | Discovery - just returns tool schemas |
-| `tools/call` | ✅ Yes | Execution - runs code, may cost money |
+The SDK implements a **selective authentication** model — discovery is open, execution is protected:
+
+| MCP Method | Auth Required | Why |
+|------------|---------------|-----|
 | `initialize` | ❌ No | Session setup |
+| `tools/list` | ❌ No | Discovery - agents need to see your schemas |
 | `resources/list` | ❌ No | Discovery |
 | `prompts/list` | ❌ No | Discovery |
+| `tools/call` | ✅ **Yes** | **Execution - costs money, runs your code** |
+
+**What this means in practice:**
+- ✅ `https://your-mcp.com/mcp` + `initialize` → Works without auth
+- ✅ `https://your-mcp.com/mcp` + `tools/list` → Works without auth  
+- ❌ `https://your-mcp.com/mcp` + `tools/call` → **Requires Context Protocol JWT**
+
+This matches standard API patterns (OpenAPI schemas are public, GraphQL introspection is open).
 
 ## Context Injection (Personalized Tools)
 
