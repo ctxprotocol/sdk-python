@@ -14,20 +14,22 @@ Features:
 
 Architecture:
 - Runs on the SAME server as Hummingbot API (localhost:8000)
-- Uses Basic Auth with HB_USERNAME and HB_PASSWORD env vars
+- Uses Official hummingbot-api-client by Fede @ Hummingbot
 - Integrates ctxprotocol SDK for payment verification
 """
 
 import os
-import base64
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
-import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+
+# Official Hummingbot API Client (by Fede @ Hummingbot)
+# https://github.com/hummingbot/hummingbot-api-client
+from hummingbot_api_client import HummingbotAPIClient
 
 from ctxprotocol import (
     verify_context_request,
@@ -59,46 +61,19 @@ TOP_PERP_EXCHANGES = [
 ALL_EXCHANGES = TOP_SPOT_EXCHANGES + TOP_PERP_EXCHANGES
 
 # ============================================================================
-# HUMMINGBOT API CLIENT
+# HUMMINGBOT API CLIENT (Official SDK)
 # ============================================================================
 
-
-def get_basic_auth_header() -> str:
-    """Generate Basic Auth header for Hummingbot API."""
-    credentials = base64.b64encode(f"{HB_USERNAME}:{HB_PASSWORD}".encode()).decode()
-    return f"Basic {credentials}"
+# Global client instance - initialized on startup
+hb_client: HummingbotAPIClient | None = None
 
 
-async def hb_fetch(
-    endpoint: str,
-    method: str = "GET",
-    body: dict[str, Any] | None = None,
-    params: dict[str, str] | None = None,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
-    """Make authenticated request to Hummingbot API."""
-    url = f"{HUMMINGBOT_API_URL}{endpoint}"
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.request(
-            method=method,
-            url=url,
-            headers={
-                "Authorization": get_basic_auth_header(),
-                "Content-Type": "application/json",
-            },
-            json=body,
-            params=params,
-        )
-
-        if not response.is_success:
-            error_text = response.text[:500]
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Hummingbot API error: {error_text}",
-            )
-
-        return response.json()
+async def get_hb_client() -> HummingbotAPIClient:
+    """Get the initialized Hummingbot API client."""
+    global hb_client
+    if hb_client is None:
+        raise HTTPException(status_code=503, detail="Hummingbot client not initialized")
+    return hb_client
 
 
 # ============================================================================
@@ -380,32 +355,29 @@ No arguments required.""",
 
 
 # ============================================================================
-# TOOL HANDLERS
+# TOOL HANDLERS (using official hummingbot-api-client)
 # ============================================================================
 
 
 async def handle_get_prices(args: dict[str, Any]) -> dict[str, Any]:
-    """Handle get_prices tool call."""
+    """Handle get_prices tool call using official Hummingbot API client."""
+    client = await get_hb_client()
     connector_name = args["connector_name"]
     trading_pairs = args["trading_pairs"]
 
-    # Call Hummingbot API
-    result = await hb_fetch(
-        "/api/v1/get-ticker",
-        method="POST",
-        body={
-            "connector": connector_name,
-            "trading_pairs": trading_pairs,
-        },
+    # Use official client method (note: param is connector_name, not connector)
+    result = await client.market_data.get_prices(
+        connector_name=connector_name,
+        trading_pairs=trading_pairs,
     )
 
     prices = []
-    for pair, data in result.items():
-        if isinstance(data, dict) and "mid_price" in data:
-            prices.append({
-                "trading_pair": pair,
-                "price": float(data["mid_price"]),
-            })
+    prices_data = result.get("prices", {}) if isinstance(result, dict) else {}
+    for pair, price in prices_data.items():
+        prices.append({
+            "trading_pair": pair,
+            "price": float(price) if price else 0,
+        })
 
     return {
         "connector": connector_name,
@@ -415,34 +387,42 @@ async def handle_get_prices(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def handle_get_order_book(args: dict[str, Any]) -> dict[str, Any]:
-    """Handle get_order_book tool call."""
+    """Handle get_order_book tool call using official Hummingbot API client."""
+    client = await get_hb_client()
     connector_name = args["connector_name"]
     trading_pair = args["trading_pair"]
     depth = args.get("depth", 10)
 
-    result = await hb_fetch(
-        "/api/v1/get-order-book-snapshot",
-        method="POST",
-        body={
-            "connector": connector_name,
-            "trading_pair": trading_pair,
-        },
+    # Use official client method (note: param is connector_name, not connector)
+    result = await client.market_data.get_order_book(
+        connector_name=connector_name,
+        trading_pair=trading_pair,
+        depth=depth,
     )
 
-    bids = result.get("bids", [])[:depth]
-    asks = result.get("asks", [])[:depth]
+    bids = result.get("bids", [])[:depth] if isinstance(result, dict) else []
+    asks = result.get("asks", [])[:depth] if isinstance(result, dict) else []
 
-    # Calculate spread
-    best_bid = float(bids[0][0]) if bids else 0
-    best_ask = float(asks[0][0]) if asks else 0
+    # Calculate spread - handle both array and dict formats
+    if bids and isinstance(bids[0], dict):
+        best_bid = float(bids[0].get("price", 0))
+        best_ask = float(asks[0].get("price", 0)) if asks else 0
+        bids_formatted = bids
+        asks_formatted = asks
+    else:
+        best_bid = float(bids[0][0]) if bids else 0
+        best_ask = float(asks[0][0]) if asks else 0
+        bids_formatted = [{"price": float(b[0]), "quantity": float(b[1])} for b in bids]
+        asks_formatted = [{"price": float(a[0]), "quantity": float(a[1])} for a in asks]
+
     spread_abs = best_ask - best_bid if best_bid and best_ask else 0
     spread_pct = (spread_abs / best_bid * 100) if best_bid else 0
 
     return {
         "connector": connector_name,
         "trading_pair": trading_pair,
-        "bids": [{"price": float(b[0]), "quantity": float(b[1])} for b in bids],
-        "asks": [{"price": float(a[0]), "quantity": float(a[1])} for a in asks],
+        "bids": bids_formatted,
+        "asks": asks_formatted,
         "spread": {
             "absolute": spread_abs,
             "percentage": round(spread_pct, 4),
@@ -452,33 +432,35 @@ async def handle_get_order_book(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def handle_get_candles(args: dict[str, Any]) -> dict[str, Any]:
-    """Handle get_candles tool call."""
+    """Handle get_candles tool call using official Hummingbot API client."""
+    client = await get_hb_client()
     connector_name = args["connector_name"]
     trading_pair = args["trading_pair"]
     interval = args["interval"]
     limit = min(args.get("limit", 100), 500)
 
-    result = await hb_fetch(
-        "/api/v1/get-candles",
-        method="POST",
-        body={
-            "connector": connector_name,
-            "trading_pair": trading_pair,
-            "interval": interval,
-            "limit": limit,
-        },
+    # Use official client method
+    result = await client.market_data.get_candles(
+        connector_name=connector_name,
+        trading_pair=trading_pair,
+        interval=interval,
+        max_records=limit,
     )
 
+    # Handle both list response and dict with candles key
+    candles_data = result if isinstance(result, list) else result.get("candles", result) if isinstance(result, dict) else []
+    
     candles = []
-    for candle in result.get("candles", []):
-        candles.append({
-            "timestamp": candle.get("timestamp"),
-            "open": float(candle.get("open", 0)),
-            "high": float(candle.get("high", 0)),
-            "low": float(candle.get("low", 0)),
-            "close": float(candle.get("close", 0)),
-            "volume": float(candle.get("volume", 0)),
-        })
+    for candle in candles_data:
+        if isinstance(candle, dict):
+            candles.append({
+                "timestamp": candle.get("timestamp"),
+                "open": float(candle.get("open", 0)),
+                "high": float(candle.get("high", 0)),
+                "low": float(candle.get("low", 0)),
+                "close": float(candle.get("close", 0)),
+                "volume": float(candle.get("volume", 0)),
+            })
 
     return {
         "connector": connector_name,
@@ -490,20 +472,19 @@ async def handle_get_candles(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def handle_get_funding_rates(args: dict[str, Any]) -> dict[str, Any]:
-    """Handle get_funding_rates tool call."""
+    """Handle get_funding_rates tool call using official Hummingbot API client."""
+    client = await get_hb_client()
     connector_name = args["connector_name"]
     trading_pair = args["trading_pair"]
 
-    result = await hb_fetch(
-        "/api/v1/get-funding-info",
-        method="POST",
-        body={
-            "connector": connector_name,
-            "trading_pair": trading_pair,
-        },
+    # Use official client method (note: param is connector_name, not connector)
+    result = await client.market_data.get_funding_info(
+        connector_name=connector_name,
+        trading_pair=trading_pair,
     )
 
-    funding_rate = float(result.get("funding_rate", 0))
+    result_dict = result if isinstance(result, dict) else {}
+    funding_rate = float(result_dict.get("funding_rate") or 0)
     annualized = funding_rate * 3 * 365 * 100  # 8h funding, 3x per day, annualized
 
     return {
@@ -512,36 +493,47 @@ async def handle_get_funding_rates(args: dict[str, Any]) -> dict[str, Any]:
         "funding_rate": funding_rate,
         "funding_rate_pct": f"{funding_rate * 100:.4f}%",
         "annualized_rate_pct": f"{annualized:.2f}%",
-        "mark_price": float(result.get("mark_price", 0)),
-        "index_price": float(result.get("index_price", 0)),
-        "next_funding_time": result.get("next_funding_time", ""),
+        "mark_price": float(result_dict.get("mark_price") or 0),
+        "index_price": float(result_dict.get("index_price") or 0),
+        "next_funding_time": result_dict.get("next_funding_time", ""),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 async def handle_analyze_trade_impact(args: dict[str, Any]) -> dict[str, Any]:
-    """Handle analyze_trade_impact tool call."""
+    """Handle analyze_trade_impact tool call using official Hummingbot API client."""
+    client = await get_hb_client()
     connector_name = args["connector_name"]
     trading_pair = args["trading_pair"]
     side = args["side"]
     amount = float(args["amount"])
 
-    # Get order book
-    ob_result = await hb_fetch(
-        "/api/v1/get-order-book-snapshot",
-        method="POST",
-        body={
-            "connector": connector_name,
-            "trading_pair": trading_pair,
-        },
+    # Use official client method to get order book (note: param is connector_name, not connector)
+    ob_result = await client.market_data.get_order_book(
+        connector_name=connector_name,
+        trading_pair=trading_pair,
+        depth=100,
     )
 
-    bids = ob_result.get("bids", [])
-    asks = ob_result.get("asks", [])
+    ob_dict = ob_result if isinstance(ob_result, dict) else {}
+    bids = ob_dict.get("bids", [])
+    asks = ob_dict.get("asks", [])
+
+    # Handle both array and dict formats
+    def get_price_qty(level: Any) -> tuple[float, float]:
+        if isinstance(level, dict):
+            return float(level.get("price", 0)), float(level.get("amount", level.get("quantity", 0)))
+        return float(level[0]), float(level[1])
 
     # Calculate mid price
-    best_bid = float(bids[0][0]) if bids else 0
-    best_ask = float(asks[0][0]) if asks else 0
+    if bids:
+        best_bid, _ = get_price_qty(bids[0])
+    else:
+        best_bid = 0
+    if asks:
+        best_ask, _ = get_price_qty(asks[0])
+    else:
+        best_ask = 0
     mid_price = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
 
     # Walk the book to calculate VWAP
@@ -551,8 +543,7 @@ async def handle_analyze_trade_impact(args: dict[str, Any]) -> dict[str, Any]:
     total_base = 0.0
 
     for level in book:
-        price = float(level[0])
-        qty = float(level[1])
+        price, qty = get_price_qty(level)
         fill_qty = min(remaining, qty)
         total_quote += fill_qty * price
         total_base += fill_qty
@@ -587,20 +578,44 @@ async def handle_analyze_trade_impact(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def handle_get_connectors(args: dict[str, Any]) -> dict[str, Any]:
-    """Handle get_connectors tool call."""
+    """Handle get_connectors tool call using official Hummingbot API client."""
+    client = await get_hb_client()
+    
+    # Use official client method
+    try:
+        connectors = await client.connectors.list_connectors()
+        connector_list = connectors if isinstance(connectors, list) else []
+    except Exception:
+        # Fallback to hardcoded list if API fails
+        connector_list = []
+
+    # Categorize connectors
+    spot = [c for c in connector_list if not c.endswith("_perpetual") and c not in ["jupiter", "uniswap", "pancakeswap", "raydium", "meteora", "vertex"]]
+    perps = [c for c in connector_list if c.endswith("_perpetual")]
+    dex = [c for c in connector_list if c in ["jupiter", "uniswap", "pancakeswap", "raydium", "meteora", "vertex"]]
+    
+    # Use hardcoded if API returned empty
+    if not connector_list:
+        return {
+            "spot_exchanges": [
+                "binance", "bybit", "okx", "kucoin", "gate_io", "coinbase_advanced_trade",
+                "kraken", "bitfinex", "mexc", "bitget", "htx", "crypto_com",
+            ],
+            "perpetual_exchanges": [
+                "binance_perpetual", "bybit_perpetual", "okx_perpetual", "gate_io_perpetual",
+                "kucoin_perpetual", "hyperliquid_perpetual", "dydx_v4_perpetual",
+            ],
+            "dex_connectors": [
+                "jupiter", "uniswap", "pancakeswap", "raydium", "meteora", "vertex",
+            ],
+            "total_count": 25,
+        }
+
     return {
-        "spot_exchanges": [
-            "binance", "bybit", "okx", "kucoin", "gate_io", "coinbase_advanced_trade",
-            "kraken", "bitfinex", "mexc", "bitget", "htx", "crypto_com",
-        ],
-        "perpetual_exchanges": [
-            "binance_perpetual", "bybit_perpetual", "okx_perpetual", "gate_io_perpetual",
-            "kucoin_perpetual", "hyperliquid_perpetual", "dydx_v4_perpetual",
-        ],
-        "dex_connectors": [
-            "jupiter", "uniswap", "pancakeswap", "raydium", "meteora", "vertex",
-        ],
-        "total_count": 25,
+        "spot_exchanges": spot[:15],  # Limit for readability
+        "perpetual_exchanges": perps,
+        "dex_connectors": dex,
+        "total_count": len(connector_list),
     }
 
 
@@ -616,13 +631,38 @@ TOOL_HANDLERS = {
 
 
 # ============================================================================
-# FASTAPI APP
+# FASTAPI APP WITH LIFESPAN (for client lifecycle)
 # ============================================================================
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage Hummingbot client lifecycle."""
+    global hb_client
+    
+    # Startup: Initialize Hummingbot API client
+    print(f"🔌 Connecting to Hummingbot API at {HUMMINGBOT_API_URL}")
+    hb_client = HummingbotAPIClient(
+        base_url=HUMMINGBOT_API_URL,
+        username=HB_USERNAME,
+        password=HB_PASSWORD,
+    )
+    await hb_client.init()
+    print("✅ Hummingbot API client connected")
+    
+    yield
+    
+    # Shutdown: Close client
+    if hb_client:
+        await hb_client.close()
+        print("🔌 Hummingbot API client disconnected")
+
 
 app = FastAPI(
     title="Hummingbot Market Intelligence MCP Server",
-    description="Public market data MCP server powered by Hummingbot API",
-    version="1.0.0",
+    description="Public market data MCP server powered by official hummingbot-api-client",
+    version="1.1.0",
+    lifespan=lifespan,
 )
 
 

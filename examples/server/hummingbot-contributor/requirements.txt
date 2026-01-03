@@ -6,8 +6,9 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 
-# HTTP client for Hummingbot API
-httpx>=0.27.0
+# Official Hummingbot API Client (by Fede @ Hummingbot)
+# https://github.com/hummingbot/hummingbot-api-client
+hummingbot-api-client>=1.2.6
 
 # Context Protocol SDK for payment verification
 ctxprotocol>=0.5.5
