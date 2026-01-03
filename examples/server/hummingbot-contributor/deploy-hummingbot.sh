@@ -14,7 +14,7 @@ echo "🚀 Deploying Hummingbot MCP Server (Python) to Server..."
 
 # --- Configuration ---
 # Update this with your server details
-SERVER_USER_HOST="ubuntu@YOUR_SERVER_IP"
+SERVER_USER_HOST="ubuntu@93.127.213.72"
 REMOTE_BASE_DIR="~/hummingbot-mcp-python"
 
 # --- Dynamic Path Detection ---

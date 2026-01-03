@@ -160,17 +160,32 @@ async def verify_context_request(
             CONTEXT_PLATFORM_PUBLIC_KEY_PEM.encode()
         )
 
+        # Build decode options - match TypeScript SDK behavior
+        decode_options: dict[str, Any] = {
+            "verify_signature": True,
+            "verify_exp": True,
+            "verify_iat": True,
+            "require": ["exp", "iat"],
+        }
+        
+        # Only verify issuer if we expect it (TypeScript SDK does this)
+        # But don't require it in case the platform doesn't always include it
+        decode_options["verify_iss"] = True
+        
+        # Only verify audience if explicitly provided
+        if audience:
+            decode_options["verify_aud"] = True
+        else:
+            decode_options["verify_aud"] = False
+
         # Verify the JWT
         payload = jwt.decode(
             token,
             public_key,
             algorithms=["RS256"],
             issuer="https://ctxprotocol.com",
-            audience=audience,
-            options={
-                "require": ["iss", "sub", "exp", "iat"],
-                "verify_aud": audience is not None,
-            },
+            audience=audience if audience else None,
+            options=decode_options,
         )
 
         return payload
@@ -193,9 +208,21 @@ async def verify_context_request(
             code="unauthorized",
             status_code=401,
         )
-    except jwt.PyJWTError:
+    except jwt.DecodeError as e:
         raise ContextError(
-            message="Invalid Context Protocol signature",
+            message=f"JWT decode error: {e}",
+            code="unauthorized",
+            status_code=401,
+        )
+    except jwt.InvalidSignatureError:
+        raise ContextError(
+            message="Invalid JWT signature",
+            code="unauthorized",
+            status_code=401,
+        )
+    except jwt.PyJWTError as e:
+        raise ContextError(
+            message=f"JWT verification failed: {e}",
             code="unauthorized",
             status_code=401,
         )
