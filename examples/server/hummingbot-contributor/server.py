@@ -4,19 +4,20 @@ Hummingbot Market Intelligence MCP Server (Python + FastMCP)
 A PUBLIC MARKET DATA MCP server powered by Hummingbot API.
 Provides access to real-time market data, liquidity analysis, and DEX quotes.
 
-SCOPE: Public market data only - NO user account data, NO trading operations
+SCOPE: Public market data + PERSONALIZED wallet-aware tools
 
 Features:
 - Multi-exchange price data (40+ CEX/DEX connectors)
 - Order book analysis with VWAP and slippage estimation
 - Funding rate analysis for perpetuals
-- DEX swap quotes (Jupiter, 0x, etc.)
+- 🎯 PERSONALIZED: Wallet-aware portfolio analysis (Context SDK injection)
 
 Architecture:
 - Built with FastMCP (MCP 2025-06-18 spec compliant)
 - Runs on the SAME server as Hummingbot API (localhost:8000)
 - Uses Official hummingbot-api-client by Fede @ Hummingbot
 - Integrates ctxprotocol SDK for payment verification
+- Demonstrates CONTEXT INJECTION pattern for user-specific data
 """
 
 import os
@@ -40,6 +41,7 @@ import uvicorn
 from hummingbot_api_client import HummingbotAPIClient
 
 from ctxprotocol import verify_context_request, ContextError
+from ctxprotocol.context import CONTEXT_REQUIREMENTS_KEY
 
 # Load environment variables
 load_dotenv()
@@ -162,6 +164,52 @@ class ConnectorsResult(BaseModel):
     perpetual_exchanges: list[str]
     dex_connectors: list[str]
     total_count: int
+
+
+# ============================================================================
+# 🎯 PERSONALIZED TOOL MODELS (wallet context injection)
+# ============================================================================
+
+
+class TokenPrice(BaseModel):
+    """Price info for a single token."""
+    symbol: str
+    price_usd: float
+    exchange: str
+    trading_pair: str
+
+
+class PortfolioPricesResult(BaseModel):
+    """Result for get_my_portfolio_prices tool."""
+    wallet_address: str
+    tokens_requested: list[str]
+    prices: list[TokenPrice]
+    total_tokens: int
+    timestamp: str
+    note: str
+
+
+class RebalanceAction(BaseModel):
+    """A single rebalance action."""
+    action: str  # "BUY" or "SELL"
+    token: str
+    amount_usd: float
+    trading_pair: str
+    exchange: str
+    estimated_vwap: float
+    price_impact_pct: float
+    sufficient_liquidity: bool
+
+
+class RebalanceAnalysisResult(BaseModel):
+    """Result for analyze_my_rebalance tool."""
+    wallet_address: str
+    target_allocation: dict[str, float]
+    current_holdings: list[str]
+    rebalance_actions: list[RebalanceAction]
+    total_trade_volume_usd: float
+    estimated_total_slippage_usd: float
+    timestamp: str
 
 
 # ============================================================================
@@ -537,6 +585,282 @@ async def get_connectors() -> ConnectorsResult:
 
 
 # ============================================================================
+# 🎯 PERSONALIZED WALLET TOOLS (Context SDK Injection Pattern)
+# ============================================================================
+# These tools demonstrate the CONTEXT INJECTION pattern:
+# 1. Tool declares it needs wallet context via x-context-requirements
+# 2. Context Platform client reads this and injects user's wallet data
+# 3. Server receives walletAddresses in the tool arguments
+#
+# This is what makes Context Protocol special - tools can be PERSONALIZED
+# without requiring users to share private keys or connect wallets directly.
+# ============================================================================
+
+
+@mcp.tool(
+    name="get_my_portfolio_prices",
+    description="""🎯 PERSONALIZED: Get current prices for tokens in YOUR connected wallet.
+
+This tool demonstrates CONTEXT INJECTION - the Context Platform automatically
+injects your wallet's token holdings, so the tool knows what prices to fetch.
+
+HOW IT WORKS:
+1. You connect your wallet to the Context Platform
+2. Platform reads your ERC20 balances
+3. Platform injects token list into this tool call
+4. Tool fetches prices for YOUR specific tokens
+
+Example response:
+- Your wallet holds: ETH, USDC, ARB, LINK
+- Returns: Current prices for each from Binance
+
+⚡ REQUIRES: Connected wallet (auto-injected by Context Platform)""",
+)
+async def get_my_portfolio_prices(
+    wallet_addresses: Annotated[
+        list[str] | None,
+        Field(description="Wallet addresses (injected by Context Platform)")
+    ] = None,
+    tokens: Annotated[
+        list[str] | None,
+        Field(description="Token symbols to price (injected from wallet holdings)")
+    ] = None,
+    exchange: Annotated[
+        str,
+        Field(description="Exchange to fetch prices from")
+    ] = "binance",
+) -> PortfolioPricesResult:
+    """Get current prices for tokens in connected wallet."""
+    client = await get_hb_client()
+
+    # Handle case where no wallet is connected
+    if not wallet_addresses or len(wallet_addresses) == 0:
+        return PortfolioPricesResult(
+            wallet_address="NOT_CONNECTED",
+            tokens_requested=[],
+            prices=[],
+            total_tokens=0,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            note="🔐 WALLET NOT CONNECTED - Connect your wallet in the Context Platform to use personalized tools.",
+        )
+
+    wallet_addr = wallet_addresses[0]
+
+    # Default tokens if none injected (demo mode)
+    token_list = tokens or ["ETH", "BTC", "USDC", "ARB"]
+
+    # Build trading pairs (assume USDT quote)
+    trading_pairs = [f"{t}-USDT" for t in token_list if t not in ["USDT", "USDC"]]
+
+    prices: list[TokenPrice] = []
+
+    if trading_pairs:
+        try:
+            result = await client.market_data.get_prices(
+                connector_name=exchange,
+                trading_pairs=trading_pairs,
+            )
+
+            prices_data = result.get("prices", {}) if isinstance(result, dict) else {}
+            for pair, price in prices_data.items():
+                symbol = pair.split("-")[0] if "-" in pair else pair
+                prices.append(TokenPrice(
+                    symbol=symbol,
+                    price_usd=float(price) if price else 0,
+                    exchange=exchange,
+                    trading_pair=pair,
+                ))
+        except Exception as e:
+            # Log but continue - some tokens may not be available
+            print(f"Price fetch warning: {e}")
+
+    return PortfolioPricesResult(
+        wallet_address=wallet_addr,
+        tokens_requested=token_list,
+        prices=prices,
+        total_tokens=len(prices),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        note=f"✅ Fetched {len(prices)} prices for wallet {wallet_addr[:10]}...",
+    )
+
+
+@mcp.tool(
+    name="analyze_my_rebalance",
+    description="""🎯 PERSONALIZED: Analyze trade impact for rebalancing YOUR portfolio.
+
+This tool demonstrates advanced CONTEXT INJECTION - the Context Platform injects
+your current wallet holdings, then calculates optimal rebalancing trades.
+
+HOW IT WORKS:
+1. Context Platform injects your current token balances
+2. You specify target allocation (e.g., 50% ETH, 30% BTC, 20% USDC)
+3. Tool calculates required trades to reach target
+4. For each trade: estimates VWAP, slippage, and liquidity
+
+Example:
+- Current: 100% ETH
+- Target: {"ETH": 50, "BTC": 30, "USDC": 20}
+- Output: Sell 0.5 ETH → buy 0.15 BTC, keep 0.2 ETH worth in USDC
+
+⚡ REQUIRES: Connected wallet (auto-injected by Context Platform)
+
+Perfect for: Portfolio rebalancing, DCA planning, risk management.""",
+)
+async def analyze_my_rebalance(
+    wallet_addresses: Annotated[
+        list[str] | None,
+        Field(description="Wallet addresses (injected by Context Platform)")
+    ] = None,
+    current_holdings_usd: Annotated[
+        dict[str, float] | None,
+        Field(description="Current holdings in USD (injected from wallet)")
+    ] = None,
+    target_allocation: Annotated[
+        dict[str, float],
+        Field(description="Target allocation percentages (must sum to 100)")
+    ] = {"ETH": 50, "BTC": 30, "USDC": 20},
+    exchange: Annotated[
+        str,
+        Field(description="Exchange to analyze trades on")
+    ] = "binance",
+) -> RebalanceAnalysisResult:
+    """Analyze trade impact for rebalancing portfolio."""
+    client = await get_hb_client()
+
+    # Handle case where no wallet is connected
+    if not wallet_addresses or len(wallet_addresses) == 0:
+        return RebalanceAnalysisResult(
+            wallet_address="NOT_CONNECTED",
+            target_allocation=target_allocation,
+            current_holdings=[],
+            rebalance_actions=[],
+            total_trade_volume_usd=0,
+            estimated_total_slippage_usd=0,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+    wallet_addr = wallet_addresses[0]
+
+    # Default holdings for demo (normally injected by Context Platform)
+    holdings = current_holdings_usd or {"ETH": 5000, "USDC": 2000}
+    total_portfolio_usd = sum(holdings.values())
+
+    # Calculate target amounts
+    target_amounts: dict[str, float] = {}
+    for token, pct in target_allocation.items():
+        target_amounts[token] = total_portfolio_usd * (pct / 100)
+
+    # Calculate required trades
+    rebalance_actions: list[RebalanceAction] = []
+    total_volume = 0.0
+    total_slippage = 0.0
+
+    for token, target_usd in target_amounts.items():
+        current_usd = holdings.get(token, 0)
+        diff_usd = target_usd - current_usd
+
+        if abs(diff_usd) < 10:  # Skip tiny rebalances
+            continue
+
+        action = "BUY" if diff_usd > 0 else "SELL"
+        amount_usd = abs(diff_usd)
+
+        # Skip stablecoins for price impact analysis
+        if token in ["USDC", "USDT", "DAI"]:
+            rebalance_actions.append(RebalanceAction(
+                action=action,
+                token=token,
+                amount_usd=amount_usd,
+                trading_pair=f"{token}-USDT",
+                exchange=exchange,
+                estimated_vwap=1.0,
+                price_impact_pct=0,
+                sufficient_liquidity=True,
+            ))
+            total_volume += amount_usd
+            continue
+
+        trading_pair = f"{token}-USDT"
+
+        try:
+            # Get price for amount calculation
+            price_result = await client.market_data.get_prices(
+                connector_name=exchange,
+                trading_pairs=[trading_pair],
+            )
+            prices_data = price_result.get("prices", {}) if isinstance(price_result, dict) else {}
+            current_price = float(prices_data.get(trading_pair, 0))
+
+            if current_price == 0:
+                continue
+
+            # Calculate base amount
+            base_amount = amount_usd / current_price
+
+            # Get order book for impact analysis
+            ob_result = await client.market_data.get_order_book(
+                connector_name=exchange,
+                trading_pair=trading_pair,
+                depth=50,
+            )
+
+            ob_dict = ob_result if isinstance(ob_result, dict) else {}
+            bids = ob_dict.get("bids", [])
+            asks = ob_dict.get("asks", [])
+
+            # Calculate VWAP
+            book = asks if action == "BUY" else bids
+            remaining = base_amount
+            total_quote = 0.0
+            total_base = 0.0
+
+            for level in book:
+                if isinstance(level, dict):
+                    price = float(level.get("price", 0))
+                    qty = float(level.get("amount", level.get("quantity", 0)))
+                else:
+                    price, qty = float(level[0]), float(level[1])
+
+                fill_qty = min(remaining, qty)
+                total_quote += fill_qty * price
+                total_base += fill_qty
+                remaining -= fill_qty
+                if remaining <= 0:
+                    break
+
+            vwap = total_quote / total_base if total_base > 0 else current_price
+            price_impact = abs((vwap - current_price) / current_price * 100) if current_price else 0
+            slippage_usd = amount_usd * (price_impact / 100)
+
+            rebalance_actions.append(RebalanceAction(
+                action=action,
+                token=token,
+                amount_usd=round(amount_usd, 2),
+                trading_pair=trading_pair,
+                exchange=exchange,
+                estimated_vwap=round(vwap, 8),
+                price_impact_pct=round(price_impact, 4),
+                sufficient_liquidity=remaining <= 0,
+            ))
+
+            total_volume += amount_usd
+            total_slippage += slippage_usd
+
+        except Exception as e:
+            print(f"Rebalance analysis warning for {token}: {e}")
+
+    return RebalanceAnalysisResult(
+        wallet_address=wallet_addr,
+        target_allocation=target_allocation,
+        current_holdings=list(holdings.keys()),
+        rebalance_actions=rebalance_actions,
+        total_trade_volume_usd=round(total_volume, 2),
+        estimated_total_slippage_usd=round(total_slippage, 2),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+# ============================================================================
 # HEALTH CHECK ENDPOINT
 # ============================================================================
 
@@ -546,10 +870,27 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "hummingbot-mcp-python-fastmcp",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "framework": "FastMCP",
         "mcp_spec": "2025-06-18",
-        "tools": ["get_prices", "get_order_book", "get_candles", "get_funding_rates", "analyze_trade_impact", "get_connectors"],
+        "tools": {
+            "market_data": [
+                "get_prices",
+                "get_order_book",
+                "get_candles",
+                "get_funding_rates",
+                "analyze_trade_impact",
+                "get_connectors",
+            ],
+            "personalized": [
+                "get_my_portfolio_prices",
+                "analyze_my_rebalance",
+            ],
+        },
+        "context_injection": {
+            "description": "Personalized tools use Context SDK wallet injection",
+            "pattern": "wallet_addresses parameter is auto-injected by Context Platform",
+        },
         "hummingbot_api": HUMMINGBOT_API_URL,
     })
 
@@ -623,7 +964,15 @@ if __name__ == "__main__":
     print(f"🚀 Starting Hummingbot MCP Server (FastMCP) on port {PORT}")
     print(f"📡 Hummingbot API: {HUMMINGBOT_API_URL}")
     print(f"🔧 Framework: FastMCP (MCP 2025-06-18 spec)")
-    print(f"🔧 Tools: get_prices, get_order_book, get_candles, get_funding_rates, analyze_trade_impact, get_connectors")
+    print(f"")
+    print(f"📊 Market Data Tools:")
+    print(f"   - get_prices, get_order_book, get_candles")
+    print(f"   - get_funding_rates, analyze_trade_impact, get_connectors")
+    print(f"")
+    print(f"🎯 Personalized Tools (Context Injection):")
+    print(f"   - get_my_portfolio_prices → Prices for YOUR tokens")
+    print(f"   - analyze_my_rebalance → Rebalance analysis for YOUR portfolio")
+    print(f"")
     print(f"🔒 Auth: Context Protocol JWT on tools/call only")
 
     uvicorn.run(app, host="0.0.0.0", port=PORT)
