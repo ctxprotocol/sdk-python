@@ -1,17 +1,20 @@
 # Hummingbot Market Intelligence MCP Server (Python)
 
-A **public market data** MCP server powered by the Hummingbot API. This is a Python implementation using FastAPI and the `ctxprotocol` SDK for payment verification.
+A **public market data** MCP server powered by the Hummingbot API. Built with **FastMCP** (MCP 2025-06-18 spec) and the `ctxprotocol` SDK for payment verification.
 
 ## Scope
 
-✅ **Public Market Data Only**
+✅ **Public Market Data**
 - Price data, order books, candles
 - Liquidity analysis, trade impact estimation
 - Funding rates for perpetuals
 
-❌ **Excluded (User-Specific Data)**
-- Portfolio balances
-- Trading positions/orders
+✅ **Gateway Integration**
+- Real blockchain wallet balances via Hummingbot Gateway
+- Portfolio tracking across CEX and DEX positions
+
+❌ **Excluded (User-Specific Operations)**
+- Trading execution
 - Account management
 - Bot orchestration
 
@@ -25,6 +28,7 @@ A **public market data** MCP server powered by the Hummingbot API. This is a Pyt
 | `get_funding_rates` | Perpetual funding rate data |
 | `analyze_trade_impact` | VWAP and price impact calculation |
 | `get_connectors` | List all supported exchanges |
+| `get_gateway_portfolio` | **Real** blockchain wallet balances from Gateway |
 
 ## Supported Exchanges
 
@@ -76,7 +80,8 @@ uvicorn server:app --host 0.0.0.0 --port 4010 --reload
 | Endpoint | Description |
 |----------|-------------|
 | `GET /health` | Health check with tool list |
-| `POST /mcp` | MCP JSON-RPC endpoint |
+| `POST /mcp` | MCP JSON-RPC endpoint (streamable HTTP) |
+| `GET /mcp` | MCP session polling (streamable HTTP) |
 
 ## Example Usage
 
@@ -85,6 +90,7 @@ uvicorn server:app --host 0.0.0.0 --port 4010 --reload
 ```bash
 curl -X POST http://localhost:4010/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -104,6 +110,7 @@ curl -X POST http://localhost:4010/mcp \
 ```bash
 curl -X POST http://localhost:4010/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -120,19 +127,19 @@ curl -X POST http://localhost:4010/mcp \
   }'
 ```
 
-### Get Funding Rates
+### Get Gateway Portfolio (Real Wallet Balances)
 
 ```bash
 curl -X POST http://localhost:4010/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
     "params": {
-      "name": "get_funding_rates",
+      "name": "get_gateway_portfolio",
       "arguments": {
-        "connector_name": "binance_perpetual",
-        "trading_pair": "BTC-USDT"
+        "refresh": true
       }
     },
     "id": 1
@@ -141,25 +148,37 @@ curl -X POST http://localhost:4010/mcp \
 
 ## Context Protocol Integration
 
-This server uses `ctxprotocol` for payment verification:
+This server uses `ctxprotocol` for payment verification via FastMCP middleware:
 
 ```python
-from ctxprotocol import verify_context_request, is_protected_mcp_method
+from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.server.dependencies import get_http_headers
+from ctxprotocol import verify_context_request, ContextError
 
-# In your endpoint handler:
-if is_protected_mcp_method(method):
-    payload = await verify_context_request(
-        authorization_header=request.headers.get("authorization"),
-    )
+class ContextProtocolAuthMiddleware(Middleware):
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        headers = get_http_headers()
+        auth_header = headers.get("authorization", "")
+        
+        try:
+            await verify_context_request(authorization_header=auth_header)
+        except ContextError as e:
+            raise ToolError(f"Unauthorized: {e.message}")
+        
+        return await call_next(context)
+
+mcp = FastMCP(name="hummingbot-market-intel")
+mcp.add_middleware(ContextProtocolAuthMiddleware())
 ```
 
 ### Security Model
 
 | MCP Method | Auth Required | Reason |
 |------------|---------------|--------|
+| `initialize` | ❌ No | Session setup |
 | `tools/list` | ❌ No | Discovery - returns tool schemas |
 | `tools/call` | ✅ Yes | Execution - runs code, costs money |
-| `initialize` | ❌ No | Session setup |
 
 ## Deployment
 
@@ -185,23 +204,46 @@ cd ~/hummingbot-mcp-python
 │  │  Hummingbot API     │    │  Market Intel MCP (Python)  │ │
 │  │  (localhost:8000)   │◄───│  (localhost:4010)           │ │
 │  │                     │    │                             │ │
-│  │  • Market Data      │    │  • FastAPI                  │ │
+│  │  • Market Data      │    │  • FastMCP framework        │ │
 │  │  • Order Books      │    │  • ctxprotocol auth         │ │
-│  │  • Gateway (DEX)    │    │  • MCP Protocol             │ │
+│  │  • Gateway (DEX)    │    │  • MCP 2025-06-18 spec      │ │
+│  │  • Portfolio State  │    │  • Streamable HTTP          │ │
 │  └─────────────────────┘    └─────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## Key Features
+
+### FastMCP Benefits
+- **Auto-generated schemas**: Pydantic models → `inputSchema` + `outputSchema`
+- **Structured content**: Automatic `structuredContent` in responses
+- **MCP 2025-06-18 compliant**: Streamable HTTP transport
+- **Middleware support**: Custom auth via `on_call_tool` hook
+
+### Gateway Integration
+- Reads **real** blockchain wallet balances
+- Uses `client.portfolio.get_state(skip_gateway=False)`
+- Tracks holdings across CEX and DEX positions
 
 ## Comparison: TypeScript vs Python Implementation
 
 | Aspect | TypeScript | Python |
 |--------|------------|--------|
-| Framework | Express + MCP SDK | FastAPI |
+| Framework | Express + MCP SDK | **FastMCP** |
 | Auth SDK | `@ctxprotocol/sdk` | `ctxprotocol` |
 | Port | 4009 | 4010 |
+| API Client | Raw fetch | `hummingbot-api-client` |
+| Schema Gen | Manual | Auto (Pydantic) |
 | Same functionality | ✅ | ✅ |
+
+## Dependencies
+
+Key packages:
+- `fastmcp>=2.14.2` - MCP server framework
+- `ctxprotocol>=0.5.6` - Context Protocol SDK
+- `hummingbot-api-client>=1.2.6` - Official Hummingbot API client
+- `pydantic>=2.0` - Data validation and schema generation
 
 ## License
 
 MIT
-
