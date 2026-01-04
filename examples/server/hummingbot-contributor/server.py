@@ -617,7 +617,7 @@ Example response:
 ⚡ REQUIRES: Connected wallet (auto-injected by Context Platform)""",
 )
 async def get_my_portfolio_prices(
-    wallet_addresses: Annotated[
+    walletAddresses: Annotated[
         list[str] | None,
         Field(description="Wallet addresses (injected by Context Platform)")
     ] = None,
@@ -634,7 +634,7 @@ async def get_my_portfolio_prices(
     client = await get_hb_client()
 
     # Handle case where no wallet is connected
-    if not wallet_addresses or len(wallet_addresses) == 0:
+    if not walletAddresses or len(walletAddresses) == 0:
         return PortfolioPricesResult(
             wallet_address="NOT_CONNECTED",
             tokens_requested=[],
@@ -644,7 +644,7 @@ async def get_my_portfolio_prices(
             note="🔐 WALLET NOT CONNECTED - Connect your wallet in the Context Platform to use personalized tools.",
         )
 
-    wallet_addr = wallet_addresses[0]
+    wallet_addr = walletAddresses[0]
 
     # Default tokens if none injected (demo mode)
     token_list = tokens or ["ETH", "BTC", "USDC", "ARB"]
@@ -707,15 +707,15 @@ Example:
 Perfect for: Portfolio rebalancing, DCA planning, risk management.""",
 )
 async def analyze_my_rebalance(
-    wallet_addresses: Annotated[
+    walletAddresses: Annotated[
         list[str] | None,
         Field(description="Wallet addresses (injected by Context Platform)")
     ] = None,
-    current_holdings_usd: Annotated[
+    currentHoldingsUsd: Annotated[
         dict[str, float] | None,
         Field(description="Current holdings in USD (injected from wallet)")
     ] = None,
-    target_allocation: Annotated[
+    targetAllocation: Annotated[
         dict[str, float],
         Field(description="Target allocation percentages (must sum to 100)")
     ] = {"ETH": 50, "BTC": 30, "USDC": 20},
@@ -728,10 +728,10 @@ async def analyze_my_rebalance(
     client = await get_hb_client()
 
     # Handle case where no wallet is connected
-    if not wallet_addresses or len(wallet_addresses) == 0:
+    if not walletAddresses or len(walletAddresses) == 0:
         return RebalanceAnalysisResult(
             wallet_address="NOT_CONNECTED",
-            target_allocation=target_allocation,
+            target_allocation=targetAllocation,
             current_holdings=[],
             rebalance_actions=[],
             total_trade_volume_usd=0,
@@ -739,15 +739,15 @@ async def analyze_my_rebalance(
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
-    wallet_addr = wallet_addresses[0]
+    wallet_addr = walletAddresses[0]
 
     # Default holdings for demo (normally injected by Context Platform)
-    holdings = current_holdings_usd or {"ETH": 5000, "USDC": 2000}
+    holdings = currentHoldingsUsd or {"ETH": 5000, "USDC": 2000}
     total_portfolio_usd = sum(holdings.values())
 
     # Calculate target amounts
     target_amounts: dict[str, float] = {}
-    for token, pct in target_allocation.items():
+    for token, pct in targetAllocation.items():
         target_amounts[token] = total_portfolio_usd * (pct / 100)
 
     # Calculate required trades
@@ -851,7 +851,7 @@ async def analyze_my_rebalance(
 
     return RebalanceAnalysisResult(
         wallet_address=wallet_addr,
-        target_allocation=target_allocation,
+        target_allocation=targetAllocation,
         current_holdings=list(holdings.keys()),
         rebalance_actions=rebalance_actions,
         total_trade_volume_usd=round(total_volume, 2),
