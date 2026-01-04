@@ -4,19 +4,20 @@ Hummingbot Market Intelligence MCP Server (Python + FastMCP)
 A PUBLIC MARKET DATA MCP server powered by Hummingbot API.
 Provides access to real-time market data, liquidity analysis, and DEX quotes.
 
-SCOPE: Public market data only - NO user accounts, NO trading operations
+SCOPE: Public market data + Gateway wallet portfolio
 
 Features:
 - Multi-exchange price data (40+ CEX/DEX connectors)
 - Order book analysis with VWAP and slippage estimation
 - Funding rate analysis for perpetuals
-- Trade impact analysis
+- 💼 GATEWAY: Real blockchain wallet balances via Hummingbot Gateway
 
 Architecture:
 - Built with FastMCP (MCP 2025-06-18 spec compliant)
 - Runs on the SAME server as Hummingbot API (localhost:8000)
 - Uses Official hummingbot-api-client by Fede @ Hummingbot
 - Integrates ctxprotocol SDK for payment verification
+- Demonstrates Gateway integration for blockchain portfolio data
 """
 
 import os
@@ -162,6 +163,29 @@ class ConnectorsResult(BaseModel):
     perpetual_exchanges: list[str]
     dex_connectors: list[str]
     total_count: int
+
+
+# ============================================================================
+# 🎯 PERSONALIZED TOOL MODELS (Gateway portfolio)
+# ============================================================================
+
+
+class TokenHolding(BaseModel):
+    """Info for a single token holding in Gateway wallet."""
+    token: str
+    balance: float
+    usd_value: float
+    connector: str
+
+
+class GatewayPortfolioResult(BaseModel):
+    """Result for get_gateway_portfolio tool."""
+    total_value_usd: float
+    holdings: list[TokenHolding]
+    token_count: int
+    connectors_used: list[str]
+    timestamp: str
+    note: str
 
 
 # ============================================================================
@@ -537,6 +561,99 @@ async def get_connectors() -> ConnectorsResult:
 
 
 # ============================================================================
+# 🎯 GATEWAY PORTFOLIO TOOL
+# ============================================================================
+# This tool demonstrates reading REAL wallet balances from Hummingbot Gateway.
+# Gateway has a wallet registered (with read-only access for DEX operations).
+# This shows how to fetch actual token holdings from the blockchain.
+# ============================================================================
+
+
+@mcp.tool(
+    name="get_gateway_portfolio",
+    description="""💼 Get REAL token holdings from the Hummingbot Gateway wallet.
+
+This tool reads ACTUAL blockchain balances from the Gateway's registered wallet.
+Unlike simulated data, these are real token holdings that can be used for DEX trading.
+
+WHAT IT SHOWS:
+- Actual token balances from Gateway wallet
+- USD values for each holding
+- Which connectors/chains the tokens are on
+
+This demonstrates Hummingbot's ability to manage real blockchain wallets
+and track portfolio across CEX and DEX positions.
+
+Use this to verify Gateway is properly configured and see available liquidity.""",
+)
+async def get_gateway_portfolio(
+    refresh: Annotated[
+        bool,
+        Field(description="Force refresh from blockchain (slower but accurate)")
+    ] = False,
+) -> GatewayPortfolioResult:
+    """Get real token holdings from Gateway wallet."""
+    client = await get_hb_client()
+
+    try:
+        # Get portfolio state INCLUDING Gateway wallets
+        state = await client.portfolio.get_state(
+            skip_gateway=False,  # Include Gateway wallet balances
+            refresh=refresh,
+        )
+
+        holdings: list[TokenHolding] = []
+        connectors_used: set[str] = set()
+        total_value = 0.0
+
+        # Parse the portfolio state
+        # Format: {account_name: {connector: [balances]}}
+        if isinstance(state, dict):
+            for account_name, account_data in state.items():
+                if isinstance(account_data, dict):
+                    for connector, balances in account_data.items():
+                        connectors_used.add(connector)
+                        if isinstance(balances, list):
+                            for balance in balances:
+                                if isinstance(balance, dict):
+                                    token = balance.get("token", "")
+                                    bal = float(balance.get("total_balance", 0))
+                                    usd_val = float(balance.get("balance_in_usd", 0))
+
+                                    # Skip zero balances
+                                    if bal > 0 and usd_val > 0.01:
+                                        holdings.append(TokenHolding(
+                                            token=token,
+                                            balance=round(bal, 8),
+                                            usd_value=round(usd_val, 2),
+                                            connector=connector,
+                                        ))
+                                        total_value += usd_val
+
+        # Sort by USD value descending
+        holdings.sort(key=lambda h: h.usd_value, reverse=True)
+
+        return GatewayPortfolioResult(
+            total_value_usd=round(total_value, 2),
+            holdings=holdings,
+            token_count=len(holdings),
+            connectors_used=list(connectors_used),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            note=f"✅ Found {len(holdings)} tokens across {len(connectors_used)} connector(s)" if holdings else "⚠️ No holdings found - Gateway wallet may be empty",
+        )
+
+    except Exception as e:
+        return GatewayPortfolioResult(
+            total_value_usd=0,
+            holdings=[],
+            token_count=0,
+            connectors_used=[],
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            note=f"❌ Error fetching portfolio: {str(e)[:100]}",
+        )
+
+
+# ============================================================================
 # HEALTH CHECK ENDPOINT
 # ============================================================================
 
@@ -546,19 +663,26 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "hummingbot-mcp-python-fastmcp",
-        "version": "2.0.0",
+        "version": "2.2.0",
         "framework": "FastMCP",
         "mcp_spec": "2025-06-18",
-        "tools": [
-            "get_prices",
-            "get_order_book",
-            "get_candles",
-            "get_funding_rates",
-            "analyze_trade_impact",
-            "get_connectors",
-        ],
-        "tool_count": 6,
-        "auth": "Context Protocol JWT on tools/call",
+        "tools": {
+            "market_data": [
+                "get_prices",
+                "get_order_book",
+                "get_candles",
+                "get_funding_rates",
+                "analyze_trade_impact",
+                "get_connectors",
+            ],
+            "gateway": [
+                "get_gateway_portfolio",
+            ],
+        },
+        "gateway_integration": {
+            "description": "Gateway portfolio shows REAL blockchain wallet balances",
+            "feature": "Reads actual token holdings from Hummingbot Gateway wallet",
+        },
         "hummingbot_api": HUMMINGBOT_API_URL,
     })
 
@@ -633,13 +757,12 @@ if __name__ == "__main__":
     print(f"📡 Hummingbot API: {HUMMINGBOT_API_URL}")
     print(f"🔧 Framework: FastMCP (MCP 2025-06-18 spec)")
     print(f"")
-    print(f"📊 Tools (6 total):")
-    print(f"   - get_prices: Multi-pair price fetching")
-    print(f"   - get_order_book: Order book with spread analysis")
-    print(f"   - get_candles: OHLCV candlestick data")
-    print(f"   - get_funding_rates: Perpetual funding rates")
-    print(f"   - analyze_trade_impact: VWAP and slippage analysis")
-    print(f"   - get_connectors: List 40+ supported exchanges")
+    print(f"📊 Market Data Tools (6):")
+    print(f"   - get_prices, get_order_book, get_candles")
+    print(f"   - get_funding_rates, analyze_trade_impact, get_connectors")
+    print(f"")
+    print(f"💼 Gateway Tool:")
+    print(f"   - get_gateway_portfolio → REAL blockchain wallet balances")
     print(f"")
     print(f"🔒 Auth: Context Protocol JWT on tools/call only")
 
