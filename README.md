@@ -244,6 +244,22 @@ The SDK implements a **selective authentication** model — discovery is open, e
 
 This matches standard API patterns (OpenAPI schemas are public, GraphQL introspection is open).
 
+## Execution Timeout & Product Design
+
+⚠️ **Important**: MCP tool execution has a **~60 second timeout** (enforced at the platform/client level, not by MCP itself). This is intentional—it encourages building pre-computed insight products rather than raw data access.
+
+**Best practice**: Run heavy queries offline (via cron jobs), store results in your database, and serve instant results via MCP. This is how Bloomberg, Nansen, and Arkham work.
+
+```python
+# ❌ BAD: Raw access (timeout-prone, no moat)
+{"name": "run_sql", "description": "Run any SQL against blockchain data"}
+
+# ✅ GOOD: Pre-computed product (instant, defensible)
+{"name": "get_smart_money_wallets", "description": "Top 100 wallets that timed market tops"}
+```
+
+See the [full documentation](https://docs.ctxprotocol.com/guides/build-tools#execution-limits--product-design) for detailed guidance.
+
 ## Context Injection (Personalized Tools)
 
 For tools that analyze user data, Context automatically injects user context:
