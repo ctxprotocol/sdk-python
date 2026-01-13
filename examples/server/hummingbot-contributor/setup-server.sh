@@ -86,3 +86,4 @@ else
     echo "   sudo journalctl -u ${SERVICE_NAME} -n 50"
 fi
 
+
