@@ -91,6 +91,31 @@ from ctxprotocol.auth import (
     CreateContextMiddlewareOptions,
 )
 
+# Handshake types and helpers for tools that need user interaction
+# (signatures, transactions, OAuth)
+from ctxprotocol.handshake import (
+    # Types
+    HandshakeMeta,
+    EIP712Domain,
+    EIP712TypeField,
+    SignatureRequest,
+    TransactionProposalMeta,
+    TransactionProposal,
+    AuthRequiredMeta,
+    AuthRequired,
+    HandshakeAction,
+    # Type guards
+    is_handshake_action,
+    is_signature_request,
+    is_transaction_proposal,
+    is_auth_required,
+    # Helper functions
+    create_signature_request,
+    create_transaction_proposal,
+    create_auth_required,
+    wrap_handshake_response,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -144,5 +169,25 @@ __all__ = [
     "ContextMiddleware",
     "VerifyRequestOptions",
     "CreateContextMiddlewareOptions",
+    # Handshake types
+    "HandshakeMeta",
+    "EIP712Domain",
+    "EIP712TypeField",
+    "SignatureRequest",
+    "TransactionProposalMeta",
+    "TransactionProposal",
+    "AuthRequiredMeta",
+    "AuthRequired",
+    "HandshakeAction",
+    # Handshake type guards
+    "is_handshake_action",
+    "is_signature_request",
+    "is_transaction_proposal",
+    "is_auth_required",
+    # Handshake helper functions
+    "create_signature_request",
+    "create_transaction_proposal",
+    "create_auth_required",
+    "wrap_handshake_response",
 ]
 
