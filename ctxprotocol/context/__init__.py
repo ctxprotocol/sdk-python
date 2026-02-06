@@ -69,23 +69,36 @@ from ctxprotocol.context.hyperliquid import (
 
 CONTEXT_REQUIREMENTS_KEY = "x-context-requirements"
 """
-JSON Schema extension key for declaring context requirements.
+DEPRECATED: Use _meta.contextRequirements instead.
 
-WHY THIS APPROACH?
-- MCP protocol only transmits: name, description, inputSchema, outputSchema
-- Custom fields like `requirements` get stripped by MCP SDK during transport
-- JSON Schema allows custom "x-" prefixed extension properties
-- inputSchema is preserved end-to-end through MCP transport
+The primary mechanism for declaring context requirements is via the MCP _meta field
+at the tool level, which is preserved by the MCP SDK through transport:
 
-Example:
     >>> tool = {
     ...     "name": "analyze_my_positions",
+    ...     "_meta": {"contextRequirements": ["hyperliquid"]},
     ...     "inputSchema": {
     ...         "type": "object",
-    ...         CONTEXT_REQUIREMENTS_KEY: ["hyperliquid"],
     ...         "properties": {"portfolio": {"type": "object"}},
     ...         "required": ["portfolio"]
     ...     }
+    ... }
+
+This constant is kept for backwards compatibility but _meta.contextRequirements
+is what the Context Platform reads. The x-context-requirements inputSchema extension
+may be stripped by some MCP transports.
+"""
+
+META_CONTEXT_REQUIREMENTS_KEY = "contextRequirements"
+"""
+The key used inside _meta to declare context requirements.
+This is the primary mechanism - the Context Platform reads _meta.contextRequirements.
+
+Example:
+    >>> tool = {
+    ...     "name": "analyze_positions",
+    ...     "_meta": {META_CONTEXT_REQUIREMENTS_KEY: ["hyperliquid"]},
+    ...     "inputSchema": {...}
     ... }
 """
 
@@ -158,6 +171,7 @@ class UserContext(BaseModel):
 __all__ = [
     # Constants
     "CONTEXT_REQUIREMENTS_KEY",
+    "META_CONTEXT_REQUIREMENTS_KEY",
     # Type aliases
     "ContextRequirementType",
     # Wallet types

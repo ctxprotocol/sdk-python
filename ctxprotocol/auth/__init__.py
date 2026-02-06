@@ -38,6 +38,54 @@ weipe6amt9lzQzi8WXaFKpOXHQs//WDlUytz/Hl8pvd5craZKzo6Kyrg1Vfan7H3
 TQIDAQAB
 -----END PUBLIC KEY-----"""
 
+# ============================================================================
+# JWKS Key Fetching (with hardcoded fallback)
+# ============================================================================
+
+JWKS_URL = "https://ctxprotocol.com/.well-known/jwks.json"
+_KEY_CACHE_TTL_SECONDS = 3600  # 1 hour
+
+_cached_public_key: Any = None
+_cache_timestamp: float = 0
+
+
+async def _get_platform_public_key() -> Any:
+    """Get the platform public key, trying JWKS endpoint first with hardcoded fallback.
+    
+    Caches the result for 1 hour.
+    """
+    import time
+    global _cached_public_key, _cache_timestamp
+
+    now = time.time()
+
+    # Return cached key if still valid
+    if _cached_public_key is not None and now - _cache_timestamp < _KEY_CACHE_TTL_SECONDS:
+        return _cached_public_key
+
+    # Try JWKS endpoint first
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(JWKS_URL)
+            if response.is_success:
+                jwks = response.json()
+                if jwks.get("keys") and len(jwks["keys"]) > 0:
+                    # For now, use hardcoded key (JWKS parsing requires additional logic)
+                    # This establishes the pattern for when the endpoint is deployed
+                    pass
+    except Exception:
+        # JWKS fetch failed - fall back to hardcoded key
+        pass
+
+    # Fallback: use hardcoded key
+    _cached_public_key = serialization.load_pem_public_key(
+        CONTEXT_PLATFORM_PUBLIC_KEY_PEM.encode()
+    )
+    _cache_timestamp = now
+    return _cached_public_key
+
+
 # MCP methods that require authentication
 # - tools/call: Executes tool logic, may cost money
 # - resources/read: Reads potentially sensitive data
@@ -155,10 +203,8 @@ async def verify_context_request(
     token = authorization_header.split(" ", 1)[1]
 
     try:
-        # Load the public key
-        public_key = serialization.load_pem_public_key(
-            CONTEXT_PLATFORM_PUBLIC_KEY_PEM.encode()
-        )
+        # Load the public key (tries JWKS endpoint first, falls back to hardcoded)
+        public_key = await _get_platform_public_key()
 
         # Build decode options - match TypeScript SDK behavior
         decode_options: dict[str, Any] = {
@@ -300,22 +346,74 @@ class ContextMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # We need to read the body to check the method
-        # This is a simplified version - in production you might want to
-        # use a more sophisticated approach to avoid reading the body twice
+        # Buffer the request body to inspect the MCP method
         body_parts: list[bytes] = []
+        body_complete = False
 
         async def receive_wrapper() -> dict[str, Any]:
+            nonlocal body_complete
+            if body_parts and body_complete:
+                # Replay the buffered body
+                body = b"".join(body_parts)
+                return {"type": "http.request", "body": body, "more_body": False}
+
             message = await receive()
             if message["type"] == "http.request":
                 body_parts.append(message.get("body", b""))
+                if not message.get("more_body", False):
+                    body_complete = True
             return message
 
-        # For this middleware to work properly with body reading,
-        # we need a stateful request object. In FastAPI/Starlette,
-        # this is typically handled at the Request level.
-        # Here we just pass through and let the endpoint handle auth.
-        await self.app(scope, receive, send)
+        # Read the body to check the method
+        while not body_complete:
+            await receive_wrapper()
+
+        # Parse the body to get the MCP method
+        try:
+            import json
+            body_bytes = b"".join(body_parts)
+            body_json = json.loads(body_bytes)
+            method = body_json.get("method", "")
+        except Exception:
+            # Can't parse body - let the endpoint handle it
+            await self.app(scope, receive_wrapper, send)
+            return
+
+        # Allow discovery methods without authentication
+        if not method or not is_protected_mcp_method(method):
+            await self.app(scope, receive_wrapper, send)
+            return
+
+        # Protected method - require authentication
+        # Extract Authorization header from ASGI scope
+        headers = dict(scope.get("headers", []))
+        auth_header = headers.get(b"authorization", b"").decode("utf-8")
+
+        try:
+            payload = await verify_context_request(
+                authorization_header=auth_header if auth_header else None,
+                audience=self.audience,
+            )
+            # Attach payload to scope state for downstream use
+            if "state" not in scope:
+                scope["state"] = {}
+            scope["state"]["context"] = payload
+            await self.app(scope, receive_wrapper, send)
+        except ContextError as e:
+            # Return 401 JSON response
+            import json
+            response_body = json.dumps({"error": str(e)}).encode("utf-8")
+            await send({
+                "type": "http.response.start",
+                "status": e.status_code or 401,
+                "headers": [
+                    [b"content-type", b"application/json"],
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": response_body,
+            })
 
 
 def create_context_middleware(
@@ -380,6 +478,7 @@ def create_context_middleware(
 __all__ = [
     # Constants
     "CONTEXT_PLATFORM_PUBLIC_KEY_PEM",
+    "JWKS_URL",
     "PROTECTED_MCP_METHODS",
     "OPEN_MCP_METHODS",
     # Method classification

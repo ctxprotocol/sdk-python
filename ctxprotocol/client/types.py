@@ -60,9 +60,13 @@ class Tool(BaseModel):
         price: Price per execution in USDC
         category: Tool category (e.g., "defi", "nft")
         is_verified: Whether the tool is verified by Context Protocol
+        kind: Tool type - currently always "mcp"
         mcp_tools: Available MCP tool methods
-        created_at: Creation timestamp
-        updated_at: Last update timestamp
+        total_queries: Total number of queries processed
+        success_rate: Success rate percentage (0-100)
+        uptime_percent: Uptime percentage (0-100)
+        total_staked: Total USDC staked by the developer
+        is_proven: Whether the tool has "Proven" status
     """
 
     id: str = Field(..., description="Unique identifier for the tool (UUID)")
@@ -75,20 +79,39 @@ class Tool(BaseModel):
         alias="isVerified",
         description="Whether the tool is verified by Context Protocol",
     )
+    kind: str | None = Field(
+        default=None,
+        description="Tool type - currently always 'mcp'",
+    )
     mcp_tools: list[McpTool] | None = Field(
         default=None,
         alias="mcpTools",
         description="Available MCP tool methods",
     )
-    created_at: str | None = Field(
+    total_queries: int | None = Field(
         default=None,
-        alias="createdAt",
-        description="Creation timestamp",
+        alias="totalQueries",
+        description="Total number of queries processed",
     )
-    updated_at: str | None = Field(
+    success_rate: str | None = Field(
         default=None,
-        alias="updatedAt",
-        description="Last update timestamp",
+        alias="successRate",
+        description="Success rate percentage",
+    )
+    uptime_percent: str | None = Field(
+        default=None,
+        alias="uptimePercent",
+        description="Uptime percentage",
+    )
+    total_staked: str | None = Field(
+        default=None,
+        alias="totalStaked",
+        description="Total USDC staked by developer",
+    )
+    is_proven: bool | None = Field(
+        default=None,
+        alias="isProven",
+        description="Whether tool has Proven status",
     )
 
     model_config = {"populate_by_name": True}

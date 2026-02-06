@@ -46,7 +46,8 @@ class Discovery:
         if limit is not None:
             params["limit"] = str(limit)
 
-        query_string = "&".join(f"{k}={v}" for k, v in params.items())
+        from urllib.parse import urlencode
+        query_string = urlencode(params) if params else ""
         endpoint = f"/api/v1/tools/search{'?' + query_string if query_string else ''}"
 
         response = await self._client.fetch(endpoint)

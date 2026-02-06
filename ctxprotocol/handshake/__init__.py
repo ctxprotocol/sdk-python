@@ -34,7 +34,10 @@ from typing import Any, Literal, Optional, TypedDict, Union
 
 
 class HandshakeMeta(TypedDict, total=False):
-    """UI metadata for handshake approval cards."""
+    """UI metadata for handshake approval cards.
+    
+    Note: Keys use camelCase to match the wire format expected by the platform.
+    """
 
     description: str
     """Human-readable description of the action."""
@@ -45,14 +48,20 @@ class HandshakeMeta(TypedDict, total=False):
     action: str
     """Action verb (e.g., 'Place Order', 'Place Bid')."""
 
-    token_symbol: str
+    tokenSymbol: str
     """Token symbol if relevant."""
 
-    token_amount: str
+    tokenAmount: str
     """Human-readable token amount."""
 
-    warning_level: Literal["info", "caution", "danger"]
+    warningLevel: Literal["info", "caution", "danger"]
     """UI warning level."""
+
+    title: str
+    """Title for the approval card."""
+
+    subtitle: str
+    """Subtitle for the approval card."""
 
 
 # =============================================================================
@@ -125,10 +134,10 @@ class SignatureRequest(TypedDict, total=False):
 class TransactionProposalMeta(HandshakeMeta, total=False):
     """Extended metadata for transaction proposals."""
 
-    estimated_gas: str
+    estimatedGas: str
     """Estimated gas cost (informational - Context may sponsor)."""
 
-    explorer_url: str
+    explorerUrl: str
     """Link to contract on block explorer."""
 
 
@@ -168,7 +177,7 @@ class TransactionProposal(TypedDict, total=False):
 class AuthRequiredMeta(TypedDict, total=False):
     """Metadata for OAuth requests."""
 
-    display_name: str
+    displayName: str
     """Human-friendly service name."""
 
     scopes: list[str]
@@ -177,10 +186,10 @@ class AuthRequiredMeta(TypedDict, total=False):
     description: str
     """Description of what access is needed."""
 
-    icon_url: str
+    iconUrl: str
     """Tool's icon URL."""
 
-    expires_in: str
+    expiresIn: str
     """How long authorization lasts."""
 
 

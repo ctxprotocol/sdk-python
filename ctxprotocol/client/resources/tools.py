@@ -82,7 +82,7 @@ class Tools:
             raise ContextError(
                 message=error_response.error,
                 code=error_response.code,
-                status_code=400,
+                status_code=None,  # Don't hardcode - this was a 200 OK with error body
                 help_url=error_response.help_url,
             )
 
