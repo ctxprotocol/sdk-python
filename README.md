@@ -55,9 +55,35 @@ pip install ctxprotocol[fastapi]
 Before using the API, complete setup at [ctxprotocol.com](https://ctxprotocol.com):
 
 1. **Sign in** — Creates your embedded wallet
-2. **Enable Auto Pay** — Approve USDC spending for tool payments
+2. **Set spending cap** — Approve USDC spending on the ContextRouter (one-time setup)
 3. **Fund wallet** — Add USDC for tool execution fees
 4. **Generate API key** — In Settings page
+
+## Two Modes: Precision vs Intelligence
+
+The SDK offers two payment models to serve different use cases:
+
+| Mode | Method | Payment Model | Use Case |
+|------|--------|---------------|----------|
+| **Execute** | `client.tools.execute()` | Pay-per-request | Simple data fetches, predictable costs, building custom pipelines |
+| **Query** | `client.query.run()` | Pay-per-response | Complex questions, multi-tool synthesis, curated intelligence |
+
+**Execute mode** gives you raw data and full control — one tool, one call, one payment:
+```python
+result = await client.tools.execute(
+    tool_id="tool-uuid",
+    tool_name="whale_transactions",
+    args={"chain": "base", "limit": 20},
+)
+```
+
+**Query mode** gives you curated answers — the server handles tool discovery, multi-tool orchestration (up to 100 MCP calls per tool), self-healing retries, and AI synthesis for one flat fee:
+```python
+answer = await client.query.run("What are the top whale movements on Base?")
+print(answer.response)    # AI-synthesized answer
+print(answer.tools_used)  # Which tools were used
+print(answer.cost)        # Cost breakdown
+```
 
 ## Quick Start
 
@@ -67,16 +93,17 @@ from ctxprotocol import ContextClient
 
 async def main():
     async with ContextClient(api_key="sk_live_...") as client:
-        # Discover tools
+        # Pay-per-response: Ask a question, get a curated answer
+        answer = await client.query.run("What are the top whale movements on Base?")
+        print(answer.response)
+
+        # Pay-per-request: Execute a specific tool for raw data
         tools = await client.discovery.search("gas prices")
-        
-        # Execute a tool
         result = await client.tools.execute(
             tool_id=tools[0].id,
             tool_name=tools[0].mcp_tools[0].name,
             args={"chainId": 1},
         )
-        
         print(result.result)
 
 asyncio.run(main())
@@ -122,11 +149,11 @@ Get featured/popular tools.
 featured = await client.discovery.get_featured(limit=5)
 ```
 
-### Tools
+### Tools (Pay-Per-Request)
 
 #### `client.tools.execute(tool_id, tool_name, args?)`
 
-Execute a tool method.
+Execute a single tool method. One call, one payment, raw result.
 
 ```python
 result = await client.tools.execute(
@@ -134,6 +161,42 @@ result = await client.tools.execute(
     tool_name="get_gas_prices",
     args={"chainId": 1},
 )
+```
+
+### Query (Pay-Per-Response)
+
+#### `client.query.run(query, tools?)`
+
+Run an agentic query. The server discovers tools, executes the full pipeline (up to 100 MCP calls per tool), and returns an AI-synthesized answer.
+
+```python
+# Simple string
+answer = await client.query.run("What are the top whale movements on Base?")
+
+# With specific tools
+answer = await client.query.run(
+    query="Analyze whale activity on Base",
+    tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
+)
+
+print(answer.response)      # AI-synthesized text
+print(answer.tools_used)    # [QueryToolUsage(id, name, skill_calls)]
+print(answer.cost)          # QueryCost(model_cost_usd, tool_cost_usd, total_cost_usd)
+print(answer.duration_ms)   # Total time
+```
+
+#### `client.query.stream(query, tools?)`
+
+Same as `run()` but streams events in real-time via SSE.
+
+```python
+async for event in client.query.stream("What are the top whale movements?"):
+    if event.type == "tool-status":
+        print(f"Tool {event.tool.name}: {event.status}")
+    elif event.type == "text-delta":
+        print(event.delta, end="")
+    elif event.type == "done":
+        print(f"\nTotal cost: {event.result.cost.total_cost_usd}")
 ```
 
 ## Types
@@ -180,8 +243,8 @@ except ContextError as e:
             # User needs to set up wallet
             print(f"Setup required: {e.help_url}")
         case "insufficient_allowance":
-            # User needs to enable Auto Pay
-            print(f"Enable Auto Pay: {e.help_url}")
+            # User needs to set a spending cap
+            print(f"Set spending cap: {e.help_url}")
         case "payment_failed":
             # Insufficient USDC balance
             pass
@@ -196,7 +259,7 @@ except ContextError as e:
 |------|-------------|----------|
 | `unauthorized` | Invalid API key | Check configuration |
 | `no_wallet` | Wallet not set up | Direct user to `help_url` |
-| `insufficient_allowance` | Auto Pay not enabled | Direct user to `help_url` |
+| `insufficient_allowance` | Spending cap not set | Direct user to `help_url` |
 | `payment_failed` | USDC payment failed | Check balance |
 | `execution_failed` | Tool error | Retry with different args |
 

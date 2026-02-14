@@ -6,6 +6,7 @@ Client module for AI Agents to query marketplace and execute tools.
 
 from ctxprotocol.client.client import ContextClient
 from ctxprotocol.client.resources.discovery import Discovery
+from ctxprotocol.client.resources.query import Query
 from ctxprotocol.client.resources.tools import Tools
 from ctxprotocol.client.types import (
     ContextClientOptions,
@@ -16,6 +17,15 @@ from ctxprotocol.client.types import (
     ExecuteOptions,
     ExecutionResult,
     McpTool,
+    # Query types (pay-per-response)
+    QueryApiSuccessResponse,
+    QueryCost,
+    QueryOptions,
+    QueryResult,
+    QueryStreamDoneEvent,
+    QueryStreamTextDeltaEvent,
+    QueryStreamToolStatusEvent,
+    QueryToolUsage,
     SearchOptions,
     SearchResponse,
     Tool,
@@ -28,6 +38,7 @@ __all__ = [
     # Resources
     "Discovery",
     "Tools",
+    "Query",
     # Types
     "ContextClientOptions",
     "Tool",
@@ -39,8 +50,16 @@ __all__ = [
     "ExecuteApiSuccessResponse",
     "ExecuteApiErrorResponse",
     "ToolInfo",
+    # Query types (pay-per-response)
+    "QueryOptions",
+    "QueryResult",
+    "QueryToolUsage",
+    "QueryCost",
+    "QueryApiSuccessResponse",
+    "QueryStreamToolStatusEvent",
+    "QueryStreamTextDeltaEvent",
+    "QueryStreamDoneEvent",
     "ContextErrorCode",
     # Errors
     "ContextError",
 ]
-

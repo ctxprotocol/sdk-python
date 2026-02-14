@@ -15,10 +15,12 @@ Example:
     >>> from ctxprotocol import ContextClient
     >>>
     >>> async with ContextClient(api_key="sk_live_...") as client:
-    ...     # Search for tools
-    ...     tools = await client.discovery.search("gas price")
+    ...     # Pay-per-response: Ask a question, get a curated answer
+    ...     answer = await client.query.run("What are the top whale movements on Base?")
+    ...     print(answer.response)
     ...
-    ...     # Execute a tool
+    ...     # Pay-per-request: Execute a specific tool for raw data
+    ...     tools = await client.discovery.search("gas price")
     ...     result = await client.tools.execute(
     ...         tool_id=tools[0].id,
     ...         tool_name=tools[0].mcp_tools[0].name,
@@ -36,6 +38,7 @@ from ctxprotocol.client import (
     ContextClient,
     ContextError,
     Discovery,
+    Query,
     Tools,
 )
 from ctxprotocol.client.types import (
@@ -46,6 +49,15 @@ from ctxprotocol.client.types import (
     ExecuteOptions,
     ExecutionResult,
     McpTool,
+    # Query types (pay-per-response)
+    QueryApiSuccessResponse,
+    QueryCost,
+    QueryOptions,
+    QueryResult,
+    QueryStreamDoneEvent,
+    QueryStreamTextDeltaEvent,
+    QueryStreamToolStatusEvent,
+    QueryToolUsage,
     SearchOptions,
     SearchResponse,
     Tool,
@@ -123,6 +135,7 @@ __all__ = [
     "ContextClient",
     "Discovery",
     "Tools",
+    "Query",
     # Client types
     "ContextClientOptions",
     "Tool",
@@ -134,6 +147,15 @@ __all__ = [
     "ExecuteApiSuccessResponse",
     "ExecuteApiErrorResponse",
     "ToolInfo",
+    # Query types (pay-per-response)
+    "QueryOptions",
+    "QueryResult",
+    "QueryToolUsage",
+    "QueryCost",
+    "QueryApiSuccessResponse",
+    "QueryStreamToolStatusEvent",
+    "QueryStreamTextDeltaEvent",
+    "QueryStreamDoneEvent",
     "ContextErrorCode",
     # Errors
     "ContextError",

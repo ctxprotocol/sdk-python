@@ -202,7 +202,7 @@ class ContextProtocolAuthMiddleware(Middleware):
     """
 
     async def on_call_tool(self, context: MiddlewareContext, call_next):
-        """Verify Context Protocol payment JWT before executing tool."""
+        """Verify Context Protocol JWT before executing tool."""
         headers = get_http_headers()
         auth_header = headers.get("authorization", "")
 

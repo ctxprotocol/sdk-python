@@ -47,8 +47,8 @@ class Tools:
 
         Raises:
             ContextError: With code `no_wallet` if wallet not set up
-            ContextError: With code `insufficient_allowance` if Auto Pay not enabled
-            ContextError: With code `payment_failed` if on-chain payment fails
+            ContextError: With code `insufficient_allowance` if spending cap not set
+            ContextError: With code `payment_failed` if payment settlement fails
             ContextError: With code `execution_failed` if tool execution fails
 
         Example:

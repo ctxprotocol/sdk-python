@@ -241,6 +241,133 @@ class ExecutionResult(BaseModel):
     duration_ms: int = Field(..., description="Execution duration in milliseconds")
 
 
+# ---------------------------------------------------------------------------
+# Query types (pay-per-response / agentic mode)
+# ---------------------------------------------------------------------------
+
+
+class QueryOptions(BaseModel):
+    """Options for the agentic query endpoint (pay-per-response).
+
+    Unlike ``execute()`` which calls a single tool once, ``query()`` sends a
+    natural-language question and lets the server handle tool discovery,
+    multi-tool orchestration, self-healing retries, and AI synthesis.
+    One flat fee covers up to 100 MCP skill calls per tool.
+
+    Attributes:
+        query: The natural-language question to answer
+        tools: Optional tool IDs to use (auto-discover if not provided)
+    """
+
+    query: str = Field(..., description="The natural-language question to answer")
+    tools: list[str] | None = Field(
+        default=None,
+        description="Optional tool IDs to use (auto-discover if not provided)",
+    )
+
+
+class QueryToolUsage(BaseModel):
+    """Information about a tool that was used during a query response.
+
+    Attributes:
+        id: Tool ID
+        name: Tool name
+        skill_calls: Number of MCP skill calls made for this tool
+    """
+
+    id: str = Field(..., description="Tool ID")
+    name: str = Field(..., description="Tool name")
+    skill_calls: int = Field(
+        ...,
+        alias="skillCalls",
+        description="Number of MCP skill calls made for this tool",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryCost(BaseModel):
+    """Cost breakdown for a query response.
+
+    Attributes:
+        model_cost_usd: AI model inference cost in USD
+        tool_cost_usd: Sum of all tool fees in USD
+        total_cost_usd: Total cost in USD
+    """
+
+    model_cost_usd: str = Field(
+        ..., alias="modelCostUsd", description="AI model inference cost"
+    )
+    tool_cost_usd: str = Field(
+        ..., alias="toolCostUsd", description="Sum of all tool fees"
+    )
+    total_cost_usd: str = Field(
+        ..., alias="totalCostUsd", description="Total cost (model + tools)"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResult(BaseModel):
+    """The resolved result of a pay-per-response query.
+
+    Attributes:
+        response: The AI-synthesized response text
+        tools_used: Tools that were used to answer the query
+        cost: Cost breakdown
+        duration_ms: Total duration in milliseconds
+    """
+
+    response: str = Field(..., description="The AI-synthesized response text")
+    tools_used: list[QueryToolUsage] = Field(
+        ..., alias="toolsUsed", description="Tools that were used"
+    )
+    cost: QueryCost = Field(..., description="Cost breakdown")
+    duration_ms: int = Field(
+        ..., alias="durationMs", description="Total duration in milliseconds"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryApiSuccessResponse(BaseModel):
+    """Successful response from the /api/v1/query endpoint."""
+
+    success: Literal[True]
+    response: str
+    tools_used: list[QueryToolUsage] = Field(..., alias="toolsUsed")
+    cost: QueryCost
+    duration_ms: int = Field(..., alias="durationMs")
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryStreamToolStatusEvent(BaseModel):
+    """Emitted when a tool starts or changes execution status."""
+
+    type: Literal["tool-status"]
+    tool: ToolInfo
+    status: str
+
+
+class QueryStreamTextDeltaEvent(BaseModel):
+    """Emitted for each chunk of the AI response text."""
+
+    type: Literal["text-delta"]
+    delta: str
+
+
+class QueryStreamDoneEvent(BaseModel):
+    """Emitted when the full response is complete."""
+
+    type: Literal["done"]
+    result: QueryResult
+
+
+# ---------------------------------------------------------------------------
+# Error types
+# ---------------------------------------------------------------------------
+
 # Type alias for specific error codes returned by the Context Protocol API
 ContextErrorCode = Literal[
     "unauthorized",
@@ -248,6 +375,7 @@ ContextErrorCode = Literal[
     "insufficient_allowance",
     "payment_failed",
     "execution_failed",
+    "query_failed",
 ]
 
 

@@ -22,10 +22,12 @@ class ContextClient:
         >>> from ctxprotocol import ContextClient
         >>>
         >>> async with ContextClient(api_key="sk_live_...") as client:
-        ...     # Discover tools
-        ...     tools = await client.discovery.search("gas prices")
+        ...     # Pay-per-response: Ask a question, get a curated answer
+        ...     answer = await client.query.run("What are the top whale movements on Base?")
+        ...     print(answer.response)
         ...
-        ...     # Execute a tool method
+        ...     # Pay-per-request: Execute a specific tool for raw data
+        ...     tools = await client.discovery.search("gas prices")
         ...     result = await client.tools.execute(
         ...         tool_id=tools[0].id,
         ...         tool_name=tools[0].mcp_tools[0].name,
@@ -56,11 +58,13 @@ class ContextClient:
 
         # Import here to avoid circular imports
         from ctxprotocol.client.resources.discovery import Discovery
+        from ctxprotocol.client.resources.query import Query
         from ctxprotocol.client.resources.tools import Tools
 
         # Initialize resources
         self.discovery = Discovery(self)
         self.tools = Tools(self)
+        self.query = Query(self)
 
     @property
     def _client(self) -> httpx.AsyncClient:
@@ -145,4 +149,64 @@ class ContextClient:
 
         except httpx.HTTPError as e:
             raise ContextError(f"HTTP request failed: {e}") from e
+
+    async def fetch_stream(
+        self,
+        endpoint: str,
+        method: str = "POST",
+        json_body: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """Internal method for making authenticated streaming HTTP requests.
+
+        Returns the raw httpx.Response with streaming enabled. The caller
+        is responsible for iterating over the response body.
+
+        Args:
+            endpoint: API endpoint path
+            method: HTTP method (POST, etc.)
+            json_body: Optional JSON body
+
+        Returns:
+            Raw httpx.Response with stream open
+
+        Raises:
+            ContextError: If the request fails
+        """
+        try:
+            response = await self._client.send(
+                self._client.build_request(
+                    method,
+                    endpoint,
+                    json=json_body,
+                ),
+                stream=True,
+            )
+
+            if not response.is_success:
+                # Read the body for error details before returning
+                await response.aread()
+                error_message = f"HTTP {response.status_code}: {response.reason_phrase}"
+                error_code: str | None = None
+                help_url: str | None = None
+
+                try:
+                    error_body = response.json()
+                    if "error" in error_body:
+                        error_message = error_body["error"]
+                        error_code = error_body.get("code")
+                        help_url = error_body.get("helpUrl")
+                except Exception:
+                    pass
+
+                raise ContextError(
+                    message=error_message,
+                    code=error_code,
+                    status_code=response.status_code,
+                    help_url=help_url,
+                )
+
+            return response
+
+        except httpx.HTTPError as e:
+            raise ContextError(f"HTTP streaming request failed: {e}") from e
 
