@@ -31,7 +31,7 @@ Example:
 For more information, visit: https://ctxprotocol.com
 """
 
-__version__ = "0.5.5"
+__version__ = "0.7.0"
 
 # Re-export everything from client module
 from ctxprotocol.client import (
