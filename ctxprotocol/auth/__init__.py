@@ -16,6 +16,8 @@ Example:
     ...     # payload contains verified JWT claims
 """
 
+from __future__ import annotations
+
 from typing import Any, Awaitable, Callable
 
 import jwt

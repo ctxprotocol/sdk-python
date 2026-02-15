@@ -5,6 +5,8 @@ These types represent Hyperliquid perpetual positions, orders, and account
 data that can be injected into MCP tools for personalized portfolio analysis.
 """
 
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import BaseModel, Field

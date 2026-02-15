@@ -34,6 +34,7 @@ class Tools:
         tool_id: str,
         tool_name: str,
         args: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> ExecutionResult:
         """Execute a tool with the provided arguments.
 
@@ -41,6 +42,7 @@ class Tools:
             tool_id: The UUID of the tool (from search results)
             tool_name: The specific MCP tool method to call (from tool's mcp_tools array)
             args: Arguments to pass to the tool
+            idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
             The execution result with the tool's output data
@@ -74,6 +76,11 @@ class Tools:
                 "toolName": tool_name,
                 "args": args or {},
             },
+            extra_headers=(
+                {"Idempotency-Key": idempotency_key}
+                if idempotency_key
+                else None
+            ),
         )
 
         # Handle error response

@@ -6,6 +6,7 @@ Use this client to discover and execute AI tools programmatically.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -99,6 +100,7 @@ class ContextClient:
         endpoint: str,
         method: str = "GET",
         json_body: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Internal method for making authenticated HTTP requests.
 
@@ -108,6 +110,7 @@ class ContextClient:
             endpoint: API endpoint path
             method: HTTP method (GET, POST, etc.)
             json_body: Optional JSON body for POST requests
+            extra_headers: Optional headers merged into the request
 
         Returns:
             Parsed JSON response
@@ -115,46 +118,79 @@ class ContextClient:
         Raises:
             ContextError: If the request fails
         """
-        try:
-            if method == "GET":
-                response = await self._client.get(endpoint)
-            elif method == "POST":
-                response = await self._client.post(endpoint, json=json_body)
-            else:
-                raise ContextError(f"Unsupported HTTP method: {method}")
+        max_retries = 3
+        timeout_seconds = 30.0
+        last_error: Exception | None = None
 
-            if not response.is_success:
-                error_message = f"HTTP {response.status_code}: {response.reason_phrase}"
-                error_code: str | None = None
-                help_url: str | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                if method == "GET":
+                    response = await self._client.get(endpoint, headers=extra_headers)
+                elif method == "POST":
+                    response = await self._client.post(
+                        endpoint,
+                        json=json_body,
+                        headers=extra_headers,
+                    )
+                else:
+                    raise ContextError(f"Unsupported HTTP method: {method}")
 
-                try:
-                    error_body = response.json()
-                    if "error" in error_body:
-                        error_message = error_body["error"]
-                        error_code = error_body.get("code")
-                        help_url = error_body.get("helpUrl")
-                except Exception:
-                    # Use default error message if JSON parsing fails
-                    pass
+                if not response.is_success:
+                    # Retry transient 5xx errors
+                    if response.status_code >= 500 and attempt < max_retries:
+                        delay = min(2**attempt, 10)
+                        await asyncio.sleep(delay)
+                        continue
 
-                raise ContextError(
-                    message=error_message,
-                    code=error_code,
-                    status_code=response.status_code,
-                    help_url=help_url,
-                )
+                    error_message = f"HTTP {response.status_code}: {response.reason_phrase}"
+                    error_code: str | None = None
+                    help_url: str | None = None
 
-            return response.json()
+                    try:
+                        error_body = response.json()
+                        if "error" in error_body:
+                            error_message = error_body["error"]
+                            error_code = error_body.get("code")
+                            help_url = error_body.get("helpUrl")
+                    except Exception:
+                        # Use default error message if JSON parsing fails
+                        pass
 
-        except httpx.HTTPError as e:
-            raise ContextError(f"HTTP request failed: {e}") from e
+                    raise ContextError(
+                        message=error_message,
+                        code=error_code,
+                        status_code=response.status_code,
+                        help_url=help_url,
+                    )
+
+                return response.json()
+            except ContextError:
+                raise
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    delay = min(2**attempt, 10)
+                    await asyncio.sleep(delay)
+                    continue
+
+                if isinstance(exc, httpx.TimeoutException):
+                    raise ContextError(
+                        message=f"Request timed out after {int(timeout_seconds)}s",
+                        status_code=408,
+                    ) from exc
+
+                raise ContextError(f"HTTP request failed: {exc}") from exc
+            except httpx.HTTPError as exc:
+                raise ContextError(f"HTTP request failed: {exc}") from exc
+
+        raise ContextError(f"Request failed after retries: {last_error}")
 
     async def fetch_stream(
         self,
         endpoint: str,
         method: str = "POST",
         json_body: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         """Internal method for making authenticated streaming HTTP requests.
 
@@ -165,6 +201,7 @@ class ContextClient:
             endpoint: API endpoint path
             method: HTTP method (POST, etc.)
             json_body: Optional JSON body
+            extra_headers: Optional headers merged into the request
 
         Returns:
             Raw httpx.Response with stream open
@@ -172,41 +209,69 @@ class ContextClient:
         Raises:
             ContextError: If the request fails
         """
-        try:
-            response = await self._client.send(
-                self._client.build_request(
-                    method,
-                    endpoint,
-                    json=json_body,
-                ),
-                stream=True,
-            )
+        max_retries = 3
+        timeout_seconds = 30.0
+        last_error: Exception | None = None
 
-            if not response.is_success:
-                # Read the body for error details before returning
-                await response.aread()
-                error_message = f"HTTP {response.status_code}: {response.reason_phrase}"
-                error_code: str | None = None
-                help_url: str | None = None
-
-                try:
-                    error_body = response.json()
-                    if "error" in error_body:
-                        error_message = error_body["error"]
-                        error_code = error_body.get("code")
-                        help_url = error_body.get("helpUrl")
-                except Exception:
-                    pass
-
-                raise ContextError(
-                    message=error_message,
-                    code=error_code,
-                    status_code=response.status_code,
-                    help_url=help_url,
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self._client.send(
+                    self._client.build_request(
+                        method,
+                        endpoint,
+                        json=json_body,
+                        headers=extra_headers,
+                    ),
+                    stream=True,
                 )
 
-            return response
+                if not response.is_success:
+                    # Read body before retrying/raising
+                    await response.aread()
 
-        except httpx.HTTPError as e:
-            raise ContextError(f"HTTP streaming request failed: {e}") from e
+                    if response.status_code >= 500 and attempt < max_retries:
+                        delay = min(2**attempt, 10)
+                        await asyncio.sleep(delay)
+                        continue
 
+                    error_message = f"HTTP {response.status_code}: {response.reason_phrase}"
+                    error_code: str | None = None
+                    help_url: str | None = None
+
+                    try:
+                        error_body = response.json()
+                        if "error" in error_body:
+                            error_message = error_body["error"]
+                            error_code = error_body.get("code")
+                            help_url = error_body.get("helpUrl")
+                    except Exception:
+                        pass
+
+                    raise ContextError(
+                        message=error_message,
+                        code=error_code,
+                        status_code=response.status_code,
+                        help_url=help_url,
+                    )
+
+                return response
+            except ContextError:
+                raise
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    delay = min(2**attempt, 10)
+                    await asyncio.sleep(delay)
+                    continue
+
+                if isinstance(exc, httpx.TimeoutException):
+                    raise ContextError(
+                        message=f"Request timed out after {int(timeout_seconds)}s",
+                        status_code=408,
+                    ) from exc
+
+                raise ContextError(f"HTTP streaming request failed: {exc}") from exc
+            except httpx.HTTPError as exc:
+                raise ContextError(f"HTTP streaming request failed: {exc}") from exc
+
+        raise ContextError(f"Streaming request failed after retries: {last_error}")

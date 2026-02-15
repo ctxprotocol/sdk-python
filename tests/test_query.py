@@ -144,6 +144,7 @@ class TestQueryRun:
                 "tools": None,
                 "stream": False,
             },
+            extra_headers=None,
         )
 
     async def test_sends_correct_request_body_with_tools(self) -> None:
@@ -165,6 +166,30 @@ class TestQueryRun:
                 "tools": ["tool-uuid-1", "tool-uuid-2"],
                 "stream": False,
             },
+            extra_headers=None,
+        )
+
+    async def test_sends_idempotency_header_when_provided(self) -> None:
+        """Explicit idempotency key is forwarded as request header."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+            await client.query.run(
+                query="Analyze whale activity",
+                tools=["tool-uuid-1"],
+                idempotency_key="7b31f437-61ed-4f76-8a6e-ed2f0766ffb8",
+            )
+
+        mock_fetch.assert_called_once_with(
+            "/api/v1/query",
+            method="POST",
+            json_body={
+                "query": "Analyze whale activity",
+                "tools": ["tool-uuid-1"],
+                "stream": False,
+            },
+            extra_headers={"Idempotency-Key": "7b31f437-61ed-4f76-8a6e-ed2f0766ffb8"},
         )
 
     async def test_parses_success_response_into_query_result(self) -> None:
@@ -265,6 +290,7 @@ class TestQueryStream:
                 "tools": None,
                 "stream": True,
             },
+            extra_headers=None,
         )
 
     async def test_yields_all_event_types(self) -> None:
@@ -378,6 +404,38 @@ class TestQueryStream:
 
         call_kwargs = mock_stream.call_args
         assert call_kwargs[1]["json_body"]["tools"] == ["tool-1", "tool-2"]
+        assert call_kwargs[1]["extra_headers"] is None
+
+    async def test_stream_forwards_idempotency_header(self) -> None:
+        """Streaming query forwards explicit idempotency key."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(
+            ['data: {"type":"text-delta","delta":"result "}', "data: [DONE]"]
+        )
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream(
+                query="test",
+                tools=["tool-1"],
+                idempotency_key="9131f6f5-cc3e-4b61-97e5-e850f36eff5d",
+            ):
+                events.append(event)
+
+        mock_stream.assert_called_once_with(
+            "/api/v1/query",
+            method="POST",
+            json_body={
+                "query": "test",
+                "tools": ["tool-1"],
+                "stream": True,
+            },
+            extra_headers={"Idempotency-Key": "9131f6f5-cc3e-4b61-97e5-e850f36eff5d"},
+        )
 
     async def test_ignores_non_data_lines(self) -> None:
         """Lines not starting with 'data: ' are ignored."""

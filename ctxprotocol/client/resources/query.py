@@ -44,6 +44,7 @@ class Query:
         self,
         query: str,
         tools: list[str] | None = None,
+        idempotency_key: str | None = None,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
 
@@ -55,6 +56,7 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
+            idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
             The complete query result with response text, tools used, and cost
@@ -86,6 +88,11 @@ class Query:
                 "tools": tools,
                 "stream": False,
             },
+            extra_headers=(
+                {"Idempotency-Key": idempotency_key}
+                if idempotency_key
+                else None
+            ),
         )
 
         # Handle error response
@@ -114,6 +121,7 @@ class Query:
         self,
         query: str,
         tools: list[str] | None = None,
+        idempotency_key: str | None = None,
     ) -> AsyncGenerator[
         QueryStreamToolStatusEvent | QueryStreamTextDeltaEvent | QueryStreamDoneEvent,
         None,
@@ -128,6 +136,7 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
+            idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Yields:
             Stream events as the query is processed
@@ -147,6 +156,11 @@ class Query:
                 "tools": tools,
                 "stream": True,
             },
+            extra_headers=(
+                {"Idempotency-Key": idempotency_key}
+                if idempotency_key
+                else None
+            ),
         )
 
         async for line in response.aiter_lines():

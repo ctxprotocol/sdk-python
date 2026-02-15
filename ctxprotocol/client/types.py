@@ -4,6 +4,8 @@ Type definitions for the Context Protocol SDK.
 This module contains all Pydantic models and type definitions used by the client.
 """
 
+from __future__ import annotations
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -171,6 +173,11 @@ class ExecuteOptions(BaseModel):
         default=None,
         description="Arguments to pass to the tool",
     )
+    idempotency_key: str | None = Field(
+        default=None,
+        alias="idempotencyKey",
+        description="Optional idempotency key (UUID recommended) for safe retries",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -263,6 +270,11 @@ class QueryOptions(BaseModel):
     tools: list[str] | None = Field(
         default=None,
         description="Optional tool IDs to use (auto-discover if not provided)",
+    )
+    idempotency_key: str | None = Field(
+        default=None,
+        alias="idempotencyKey",
+        description="Optional idempotency key (UUID recommended) for safe retries",
     )
 
 
