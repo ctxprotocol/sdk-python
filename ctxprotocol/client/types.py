@@ -264,6 +264,9 @@ class QueryOptions(BaseModel):
     Attributes:
         query: The natural-language question to answer
         tools: Optional tool IDs to use (auto-discover if not provided)
+        model_id: Optional model ID for query orchestration/synthesis
+        include_data: Include execution data inline in the query response
+        include_data_url: Persist execution data to blob and return URL
     """
 
     query: str = Field(..., description="The natural-language question to answer")
@@ -271,11 +274,28 @@ class QueryOptions(BaseModel):
         default=None,
         description="Optional tool IDs to use (auto-discover if not provided)",
     )
+    model_id: str | None = Field(
+        default=None,
+        alias="modelId",
+        description="Optional model ID for query orchestration/synthesis",
+    )
+    include_data: bool | None = Field(
+        default=None,
+        alias="includeData",
+        description="Include execution data inline in the query response",
+    )
+    include_data_url: bool | None = Field(
+        default=None,
+        alias="includeDataUrl",
+        description="Persist execution data to blob and return URL",
+    )
     idempotency_key: str | None = Field(
         default=None,
         alias="idempotencyKey",
         description="Optional idempotency key (UUID recommended) for safe retries",
     )
+
+    model_config = {"populate_by_name": True}
 
 
 class QueryToolUsage(BaseModel):
@@ -328,6 +348,8 @@ class QueryResult(BaseModel):
         tools_used: Tools that were used to answer the query
         cost: Cost breakdown
         duration_ms: Total duration in milliseconds
+        data: Optional execution data (when include_data is enabled)
+        data_url: Optional blob URL for execution data (when include_data_url is enabled)
     """
 
     response: str = Field(..., description="The AI-synthesized response text")
@@ -337,6 +359,15 @@ class QueryResult(BaseModel):
     cost: QueryCost = Field(..., description="Cost breakdown")
     duration_ms: int = Field(
         ..., alias="durationMs", description="Total duration in milliseconds"
+    )
+    data: Any | None = Field(
+        default=None,
+        description="Optional execution data from tools",
+    )
+    data_url: str | None = Field(
+        default=None,
+        alias="dataUrl",
+        description="Optional blob URL for persisted execution data",
     )
 
     model_config = {"populate_by_name": True}
@@ -350,6 +381,8 @@ class QueryApiSuccessResponse(BaseModel):
     tools_used: list[QueryToolUsage] = Field(..., alias="toolsUsed")
     cost: QueryCost
     duration_ms: int = Field(..., alias="durationMs")
+    data: Any | None = None
+    data_url: str | None = Field(default=None, alias="dataUrl")
 
     model_config = {"populate_by_name": True}
 

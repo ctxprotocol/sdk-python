@@ -77,12 +77,17 @@ result = await client.tools.execute(
 )
 ```
 
-**Query mode** gives you curated answers — the server handles tool discovery, multi-tool orchestration (up to 100 MCP calls per tool), self-healing retries, and AI synthesis for one flat fee:
+**Query mode** gives you curated answers — the server handles tool discovery, multi-tool orchestration (up to 100 MCP calls per tool), self-healing retries, completeness checks, model-aware context budgeting, and AI synthesis for one flat fee:
 ```python
-answer = await client.query.run("What are the top whale movements on Base?")
+answer = await client.query.run(
+    query="What are the top whale movements on Base?",
+    model_id="glm-model",      # optional: choose a supported model
+    include_data_url=True,     # optional: persist full execution data to blob
+)
 print(answer.response)    # AI-synthesized answer
 print(answer.tools_used)  # Which tools were used
 print(answer.cost)        # Cost breakdown
+print(answer.data_url)    # Optional blob URL with full data
 ```
 
 ## Quick Start
@@ -165,9 +170,9 @@ result = await client.tools.execute(
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?)`
+#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?)`
 
-Run an agentic query. The server discovers tools, executes the full pipeline (up to 100 MCP calls per tool), and returns an AI-synthesized answer.
+Run an agentic query. The server discovers tools, executes the full pipeline (up to 100 MCP calls per tool), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
 
 ```python
 # Simple string
@@ -177,15 +182,20 @@ answer = await client.query.run("What are the top whale movements on Base?")
 answer = await client.query.run(
     query="Analyze whale activity on Base",
     tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
+    model_id="kimi-model-thinking",          # optional
+    include_data=True,                       # optional: include execution data inline
+    include_data_url=True,                   # optional: include blob URL for full data
 )
 
 print(answer.response)      # AI-synthesized text
 print(answer.tools_used)    # [QueryToolUsage(id, name, skill_calls)]
 print(answer.cost)          # QueryCost(model_cost_usd, tool_cost_usd, total_cost_usd)
 print(answer.duration_ms)   # Total time
+print(answer.data)          # Optional execution data (when include_data=True)
+print(answer.data_url)      # Optional blob URL (when include_data_url=True)
 ```
 
-#### `client.query.stream(query, tools?)`
+#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?)`
 
 Same as `run()` but streams events in real-time via SSE.
 

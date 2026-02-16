@@ -169,6 +169,44 @@ class TestQueryRun:
             extra_headers=None,
         )
 
+    async def test_forwards_model_and_data_options(self) -> None:
+        """Optional model and data controls are forwarded in request body."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        success_with_data = {
+            **MOCK_SUCCESS_RESPONSE,
+            "data": {"summary": "tool output"},
+            "dataUrl": "https://example.public.blob.vercel-storage.com/data.json",
+        }
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = success_with_data
+            result = await client.query.run(
+                query="Analyze whale activity",
+                model_id="glm-model",
+                include_data=True,
+                include_data_url=True,
+            )
+
+        mock_fetch.assert_called_once_with(
+            "/api/v1/query",
+            method="POST",
+            json_body={
+                "query": "Analyze whale activity",
+                "tools": None,
+                "stream": False,
+                "modelId": "glm-model",
+                "includeData": True,
+                "includeDataUrl": True,
+            },
+            extra_headers=None,
+        )
+        assert result.data == {"summary": "tool output"}
+        assert (
+            result.data_url
+            == "https://example.public.blob.vercel-storage.com/data.json"
+        )
+
     async def test_sends_idempotency_header_when_provided(self) -> None:
         """Explicit idempotency key is forwarded as request header."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
@@ -405,6 +443,32 @@ class TestQueryStream:
         call_kwargs = mock_stream.call_args
         assert call_kwargs[1]["json_body"]["tools"] == ["tool-1", "tool-2"]
         assert call_kwargs[1]["extra_headers"] is None
+
+    async def test_stream_forwards_model_and_data_options(self) -> None:
+        """Streaming request forwards model and data options."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(
+            ['data: {"type":"text-delta","delta":"result "}', "data: [DONE]"]
+        )
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream(
+                query="test",
+                model_id="claude-sonnet-model",
+                include_data=True,
+                include_data_url=True,
+            ):
+                events.append(event)
+
+        call_kwargs = mock_stream.call_args
+        assert call_kwargs[1]["json_body"]["modelId"] == "claude-sonnet-model"
+        assert call_kwargs[1]["json_body"]["includeData"] is True
+        assert call_kwargs[1]["json_body"]["includeDataUrl"] is True
 
     async def test_stream_forwards_idempotency_header(self) -> None:
         """Streaming query forwards explicit idempotency key."""

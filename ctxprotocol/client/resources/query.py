@@ -44,6 +44,9 @@ class Query:
         self,
         query: str,
         tools: list[str] | None = None,
+        model_id: str | None = None,
+        include_data: bool | None = None,
+        include_data_url: bool | None = None,
         idempotency_key: str | None = None,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
@@ -56,6 +59,9 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
+            model_id: Optional model ID for query orchestration/synthesis
+            include_data: Include execution data inline in the query response
+            include_data_url: Persist execution data to blob and return URL
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
@@ -80,14 +86,22 @@ class Query:
             ...     tools=["tool-uuid-1", "tool-uuid-2"],
             ... )
         """
+        request_body: dict[str, Any] = {
+            "query": query,
+            "tools": tools,
+            "stream": False,
+        }
+        if model_id is not None:
+            request_body["modelId"] = model_id
+        if include_data is not None:
+            request_body["includeData"] = include_data
+        if include_data_url is not None:
+            request_body["includeDataUrl"] = include_data_url
+
         response = await self._client.fetch(
             "/api/v1/query",
             method="POST",
-            json_body={
-                "query": query,
-                "tools": tools,
-                "stream": False,
-            },
+            json_body=request_body,
             extra_headers=(
                 {"Idempotency-Key": idempotency_key}
                 if idempotency_key
@@ -113,6 +127,8 @@ class Query:
                 tools_used=success_response.tools_used,
                 cost=success_response.cost,
                 duration_ms=success_response.duration_ms,
+                data=success_response.data,
+                data_url=success_response.data_url,
             )
 
         raise ContextError("Unexpected response format from query API")
@@ -121,6 +137,9 @@ class Query:
         self,
         query: str,
         tools: list[str] | None = None,
+        model_id: str | None = None,
+        include_data: bool | None = None,
+        include_data_url: bool | None = None,
         idempotency_key: str | None = None,
     ) -> AsyncGenerator[
         QueryStreamToolStatusEvent | QueryStreamTextDeltaEvent | QueryStreamDoneEvent,
@@ -136,6 +155,9 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
+            model_id: Optional model ID for query orchestration/synthesis
+            include_data: Include execution data inline in the query response
+            include_data_url: Persist execution data to blob and return URL
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Yields:
@@ -148,14 +170,22 @@ class Query:
             ...     elif event.type == "done":
             ...         print(f"\\nCost: {event.result.cost.total_cost_usd}")
         """
+        request_body: dict[str, Any] = {
+            "query": query,
+            "tools": tools,
+            "stream": True,
+        }
+        if model_id is not None:
+            request_body["modelId"] = model_id
+        if include_data is not None:
+            request_body["includeData"] = include_data
+        if include_data_url is not None:
+            request_body["includeDataUrl"] = include_data_url
+
         response = await self._client.fetch_stream(
             "/api/v1/query",
             method="POST",
-            json_body={
-                "query": query,
-                "tools": tools,
-                "stream": True,
-            },
+            json_body=request_body,
             extra_headers=(
                 {"Idempotency-Key": idempotency_key}
                 if idempotency_key
