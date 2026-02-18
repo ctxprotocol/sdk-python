@@ -34,6 +34,7 @@ class McpTool(BaseModel):
         description: Description of what this method does
         input_schema: JSON Schema for the input arguments this tool accepts
         output_schema: JSON Schema for the output this tool returns
+        meta: MCP metadata extensions (context requirements, rate-limit hints)
     """
 
     name: str = Field(..., description="Name of the MCP tool method")
@@ -47,6 +48,14 @@ class McpTool(BaseModel):
         default=None,
         alias="outputSchema",
         description="JSON Schema for the output this tool returns",
+    )
+    meta: dict[str, Any] | None = Field(
+        default=None,
+        alias="_meta",
+        description=(
+            "MCP metadata extensions. May include contextRequirements and "
+            "rate-limit hints (maxRequestsPerMinute, cooldownMs, etc)."
+        ),
     )
 
     model_config = {"populate_by_name": True}

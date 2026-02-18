@@ -360,6 +360,14 @@ TOOLS = [{
     "description": "Analyze your positions with personalized insights",
     "_meta": {
         "contextRequirements": ["hyperliquid"],
+        "rateLimit": {
+            "maxRequestsPerMinute": 30,
+            "cooldownMs": 2000,
+            "maxConcurrency": 1,
+            "supportsBulk": True,
+            "recommendedBatchTools": ["get_portfolio_snapshot"],
+            "notes": "Hobby tier: use snapshot endpoints before fan-out loops.",
+        },
     },
     "inputSchema": {
         "type": "object",

@@ -62,6 +62,9 @@ HB_PASSWORD=admin
 
 # Server port
 PORT=4010
+
+# Optional planner/runtime pacing hint (requests per minute)
+HB_RATE_LIMIT_RPM=60
 ```
 
 ### 3. Run the Server
@@ -219,6 +222,7 @@ cd ~/hummingbot-mcp-python
 - **Structured content**: Automatic `structuredContent` in responses
 - **MCP 2025-06-18 compliant**: Streamable HTTP transport
 - **Middleware support**: Custom auth via `on_call_tool` hook
+- **Tool metadata hints**: `_meta.rateLimit` hints are published for planner/runtime pacing
 
 ### Gateway Integration
 - Reads **real** blockchain wallet balances

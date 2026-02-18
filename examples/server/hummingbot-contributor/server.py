@@ -65,6 +65,12 @@ TOP_PERP_EXCHANGES = [
 ]
 ALL_EXCHANGES = TOP_SPOT_EXCHANGES + TOP_PERP_EXCHANGES
 
+# Optional pacing hints for planner/runtime coordination.
+# These are advisory metadata exposed via MCP tool _meta.
+HB_RATE_LIMIT_RPM = max(int(os.getenv("HB_RATE_LIMIT_RPM", "60")), 1)
+HB_RATE_LIMIT_COOLDOWN_MS = max(60_000 // HB_RATE_LIMIT_RPM, 100)
+HB_RATE_LIMIT_MAX_CONCURRENCY = 1
+
 # ============================================================================
 # HUMMINGBOT API CLIENT (Official SDK)
 # ============================================================================
@@ -241,6 +247,25 @@ mcp.add_middleware(ContextProtocolAuthMiddleware())
 # ============================================================================
 
 
+def build_rate_limit_meta(
+    *,
+    supports_bulk: bool,
+    recommended_batch_tools: list[str] | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "rateLimit": {
+            "maxRequestsPerMinute": HB_RATE_LIMIT_RPM,
+            "cooldownMs": HB_RATE_LIMIT_COOLDOWN_MS,
+            "maxConcurrency": HB_RATE_LIMIT_MAX_CONCURRENCY,
+            "supportsBulk": supports_bulk,
+            "recommendedBatchTools": recommended_batch_tools or [],
+            "notes": notes
+            or "Hummingbot API pacing hints: prefer batch/snapshot tools before fan-out loops.",
+        }
+    }
+
+
 @mcp.tool(
     name="get_prices",
     description="""📊 Get real-time prices for trading pairs across exchanges.
@@ -252,6 +277,11 @@ Example: Get BTC and ETH prices from Binance
 - trading_pairs: ["BTC-USDT", "ETH-USDT"]
 
 Supported exchanges: binance, bybit, okx, kucoin, gate_io, hyperliquid_perpetual, and 40+ more.""",
+    meta=build_rate_limit_meta(
+        supports_bulk=True,
+        recommended_batch_tools=["get_prices"],
+        notes="Batch-friendly endpoint: fetch multiple trading pairs in one call.",
+    ),
 )
 async def get_prices(
     connector_name: Annotated[str, Field(description="Exchange connector name")],
@@ -292,6 +322,11 @@ Example: Get BTC-USDT order book from Binance
 - depth: 10
 
 Supported exchanges: All CEX connectors.""",
+    meta=build_rate_limit_meta(
+        supports_bulk=False,
+        recommended_batch_tools=["get_prices"],
+        notes="If scanning many markets, fetch broad prices first then narrow order book calls.",
+    ),
 )
 async def get_order_book(
     connector_name: Annotated[str, Field(description="Exchange connector name")],
@@ -348,6 +383,10 @@ Example: Get 1-hour BTC candles from Binance
 - limit: 100
 
 Intervals: 1m, 5m, 15m, 1h, 4h, 1d""",
+    meta=build_rate_limit_meta(
+        supports_bulk=False,
+        recommended_batch_tools=["get_prices"],
+    ),
 )
 async def get_candles(
     connector_name: Annotated[str, Field(description="Exchange connector name")],
@@ -401,6 +440,10 @@ Example: Get BTC funding rate from Binance Perpetual
 - trading_pair: "BTC-USDT"
 
 Supported: binance_perpetual, bybit_perpetual, hyperliquid_perpetual, okx_perpetual""",
+    meta=build_rate_limit_meta(
+        supports_bulk=False,
+        recommended_batch_tools=["get_prices"],
+    ),
 )
 async def get_funding_rates(
     connector_name: Annotated[str, Field(description="Perpetual exchange connector")],
@@ -442,6 +485,10 @@ Uses real order book data to compute:
 - Whether sufficient liquidity exists
 
 Perfect for: Pre-trade analysis, optimal execution planning, large order sizing.""",
+    meta=build_rate_limit_meta(
+        supports_bulk=False,
+        recommended_batch_tools=["get_prices"],
+    ),
 )
 async def analyze_trade_impact(
     connector_name: Annotated[str, Field(description="Exchange connector")],
@@ -519,6 +566,11 @@ async def analyze_trade_impact(
 Returns the full list of 40+ CEX and DEX connectors available in Hummingbot.
 
 No arguments required.""",
+    meta=build_rate_limit_meta(
+        supports_bulk=True,
+        recommended_batch_tools=["get_connectors"],
+        notes="Discovery/snapshot endpoint suitable as first call in orchestration.",
+    ),
 )
 async def get_connectors() -> ConnectorsResult:
     """List all supported exchange connectors."""
@@ -585,6 +637,11 @@ This demonstrates Hummingbot's ability to manage real blockchain wallets
 and track portfolio across CEX and DEX positions.
 
 Use this to verify Gateway is properly configured and see available liquidity.""",
+    meta=build_rate_limit_meta(
+        supports_bulk=True,
+        recommended_batch_tools=["get_gateway_portfolio"],
+        notes="Snapshot endpoint: use once per turn instead of repeated polling loops.",
+    ),
 )
 async def get_gateway_portfolio(
     refresh: Annotated[
