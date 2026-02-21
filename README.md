@@ -29,13 +29,13 @@ We're funding the initial supply of MCP Tools for the Context Marketplace. **Bec
 - **🔌 One Interface, Everything:** Stop integrating APIs one by one. Use a single SDK to access any tool in the marketplace.
 - **🧠 Zero-Ops:** We're a gateway to the best MCP tools. Just send the JSON and get the result.
 - **⚡️ Agentic Discovery:** Your Agent can search the marketplace at runtime to find tools it didn't know it needed.
-- **💸 Pay-Per-Response:** The $500/year subscription? Now $0.01/response. No monthly fees, just results.
+- **💸 Dual-Surface Economics:** Use Query for pay-per-response intelligence or Execute for session-budgeted method calls.
 
 ## Who Is This SDK For?
 
 | Role | What You Use |
 |------|--------------|
-| **AI Agent Developer** | `ctxprotocol` — Query marketplace, execute tools, handle payments |
+| **AI Agent Developer** | `ctxprotocol` — Query curated answers or Execute with explicit method pricing + sessions |
 | **Tool Contributor (Data Broker)** | `mcp` + `ctxprotocol` — Standard MCP server + security middleware |
 
 ## Installation
@@ -63,21 +63,31 @@ Before using the API, complete setup at [ctxprotocol.com](https://ctxprotocol.co
 
 The SDK offers two payment models to serve different use cases:
 
-| Mode | Method | Payment Model | Use Case |
-|------|--------|---------------|----------|
-| **Execute** | `client.tools.execute()` | Pay-per-request | Simple data fetches, predictable costs, building custom pipelines |
-| **Query** | `client.query.run()` | Pay-per-response | Complex questions, multi-tool synthesis, curated intelligence |
+| Mode | Method | Payment Model | Settlement Shape | Use Case |
+|------|--------|---------------|------------------|----------|
+| **Execute** | `client.tools.execute()` | Per execute call | Session accrual + deferred batch flush | Deterministic pipelines, raw outputs, explicit spend envelopes |
+| **Query** | `client.query.run()` | Pay-per-response | Deferred post-response | Complex questions, multi-tool synthesis, curated intelligence |
 
-**Execute mode** gives you raw data and full control — one tool, one call, one payment:
+**Execute mode** gives you raw data and full control with explicit method pricing and session budgets:
 ```python
-result = await client.tools.execute(
-    tool_id="tool-uuid",
-    tool_name="whale_transactions",
-    args={"chain": "base", "limit": 20},
+session = await client.tools.start_session(max_spend_usd="2.00")
+execute_tools = await client.discovery.search(
+    "whale transactions",
+    mode="execute",
+    surface="execute",
+    require_execute_pricing=True,
 )
+
+result = await client.tools.execute(
+    tool_id=execute_tools[0].id,
+    tool_name=execute_tools[0].mcp_tools[0].name,
+    args={"chain": "base", "limit": 20},
+    session_id=session.session.session_id,
+)
+print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you curated answers — the server handles tool discovery, multi-tool orchestration (up to 100 MCP calls per tool), self-healing retries, completeness checks, model-aware context budgeting, and AI synthesis for one flat fee:
+**Query mode** gives you curated answers — the server handles answer-safe tool discovery, multi-tool orchestration (up to 100 MCP calls per query turn), self-healing retries, completeness checks, model-aware context budgeting, and AI synthesis for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
@@ -89,6 +99,8 @@ print(answer.tools_used)  # Which tools were used
 print(answer.cost)        # Cost breakdown
 print(answer.data_url)    # Optional blob URL with full data
 ```
+
+> Mixed listings are first-class: one listing can expose methods to both surfaces. Methods without `_meta.pricing.executeUsd` remain query-only until priced.
 
 ## Quick Start
 
@@ -102,17 +114,26 @@ async def main():
         answer = await client.query.run("What are the top whale movements on Base?")
         print(answer.response)
 
-        # Pay-per-request: Execute a specific tool for raw data
-        tools = await client.discovery.search("gas prices")
+        # Execute surface: require explicit execute pricing
+        tools = await client.discovery.search(
+            "gas prices",
+            mode="execute",
+            surface="execute",
+            require_execute_pricing=True,
+        )
+        session = await client.tools.start_session(max_spend_usd="1.00")
         result = await client.tools.execute(
             tool_id=tools[0].id,
             tool_name=tools[0].mcp_tools[0].name,
             args={"chainId": 1},
+            session_id=session.session.session_id,
         )
         print(result.result)
 
 asyncio.run(main())
 ```
+
+See a full dual-surface client script in [`examples/two-surfaces-client.py`](./examples/two-surfaces-client.py).
 
 ## Configuration
 
@@ -140,39 +161,77 @@ client = ContextClient(
 
 #### `client.discovery.search(query, limit?)`
 
-Search for tools matching a query string.
+Search for tools with optional surface-aware filters.
 
 ```python
 tools = await client.discovery.search("ethereum gas", limit=10)
+
+execute_tools = await client.discovery.search(
+    "ethereum gas",
+    mode="execute",
+    surface="execute",
+    require_execute_pricing=True,
+)
 ```
 
-#### `client.discovery.get_featured(limit?)`
+#### `client.discovery.get_featured(limit?, ...)`
 
 Get featured/popular tools.
 
 ```python
 featured = await client.discovery.get_featured(limit=5)
+featured_execute = await client.discovery.get_featured(
+    limit=5,
+    mode="execute",
+    require_execute_pricing=True,
+)
 ```
 
-### Tools (Pay-Per-Request)
+### Tools (Execute Surface)
+
+Session lifecycle helpers use the canonical execute-scoped API contract:
+`/api/v1/tools/execute/sessions...`
 
 #### `client.tools.execute(tool_id, tool_name, args?)`
 
-Execute a single tool method. One call, one payment, raw result.
+Execute a single tool method. Execute calls can run inside session budgets.
 
 ```python
+session = await client.tools.start_session(max_spend_usd="2.50")
+
 result = await client.tools.execute(
     tool_id="uuid-of-tool",
     tool_name="get_gas_prices",
     args={"chainId": 1},
+    session_id=session.session.session_id,
 )
+print(result.method.execute_price_usd)
+print(result.session)
+```
+
+#### `client.tools.start_session(max_spend_usd)`
+
+```python
+started = await client.tools.start_session(max_spend_usd="5.00")
+```
+
+#### `client.tools.get_session(session_id)`
+
+```python
+status = await client.tools.get_session("sess_123")
+```
+
+#### `client.tools.close_session(session_id)`
+
+```python
+closed = await client.tools.close_session("sess_123")
 ```
 
 ### Query (Pay-Per-Response)
 
 #### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?)`
 
-Run an agentic query. The server discovers tools, executes the full pipeline (up to 100 MCP calls per tool), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
+Run an agentic query. The server discovers answer-safe tools, executes the full pipeline (up to 100 MCP calls per query turn), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
 
 ```python
 # Simple string

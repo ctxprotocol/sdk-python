@@ -26,6 +26,137 @@ class ContextClientOptions(BaseModel):
     )
 
 
+DiscoveryMode = Literal["query", "execute"]
+McpToolSurface = Literal["answer", "execute", "both"]
+McpToolLatencyClass = Literal["instant", "fast", "slow", "streaming"]
+ExecuteSessionStatus = Literal["open", "closed", "expired"]
+
+
+class McpToolRateLimitHints(BaseModel):
+    """Optional planner/runtime pacing hints for MCP methods."""
+
+    max_requests_per_minute: int | None = Field(
+        default=None,
+        alias="maxRequestsPerMinute",
+        description="Suggested request budget for this method",
+    )
+    max_concurrency: int | None = Field(
+        default=None,
+        alias="maxConcurrency",
+        description="Suggested parallel call ceiling for this method",
+    )
+    cooldown_ms: int | None = Field(
+        default=None,
+        alias="cooldownMs",
+        description="Suggested minimum delay between sequential calls",
+    )
+    supports_bulk: bool | None = Field(
+        default=None,
+        alias="supportsBulk",
+        description="Whether this method supports bulk retrieval",
+    )
+    recommended_batch_tools: list[str] | None = Field(
+        default=None,
+        alias="recommendedBatchTools",
+        description="Preferred batch methods to call instead of fan-out loops",
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Optional human-readable notes for planning",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class McpToolPricingMeta(BaseModel):
+    """Method-level pricing metadata."""
+
+    execute_usd: str | None = Field(
+        default=None,
+        alias="executeUsd",
+        description="Execute price in USD",
+    )
+    query_usd: str | None = Field(
+        default=None,
+        alias="queryUsd",
+        description="Reserved query price metadata",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class McpToolMeta(BaseModel):
+    """Typed MCP method metadata used for discovery and execution routing."""
+
+    surface: McpToolSurface | None = Field(
+        default=None,
+        description="Declared method surface",
+    )
+    query_eligible: bool | None = Field(
+        default=None,
+        alias="queryEligible",
+        description="Whether this method can be selected in query mode",
+    )
+    latency_class: McpToolLatencyClass | None = Field(
+        default=None,
+        alias="latencyClass",
+        description="Declared latency class for planner/runtime gating",
+    )
+    pricing: McpToolPricingMeta | None = Field(
+        default=None,
+        description="Method-level pricing metadata",
+    )
+    execute_eligible: bool | None = Field(
+        default=None,
+        alias="executeEligible",
+        description="Derived discovery flag for execute eligibility",
+    )
+    execute_price_usd: str | None = Field(
+        default=None,
+        alias="executePriceUsd",
+        description="Derived discovery field for execute pricing visibility",
+    )
+    context_requirements: list[str] | None = Field(
+        default=None,
+        alias="contextRequirements",
+        description="Context injection requirements handled by Context runtime",
+    )
+    rate_limit: McpToolRateLimitHints | None = Field(
+        default=None,
+        alias="rateLimit",
+        description="Planner/runtime pacing hints",
+    )
+    rate_limit_hints: McpToolRateLimitHints | None = Field(
+        default=None,
+        alias="rateLimitHints",
+        description="Planner/runtime pacing hints (alternate key)",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class StructuredMethodGuidanceHints(BaseModel):
+    """Normalized guidance hints extracted from contributor method descriptions."""
+
+    call_order_hints: list[str] | None = Field(
+        default=None,
+        alias="callOrderHints",
+        description="Suggested call-order sequence extracted from descriptions",
+    )
+    parameter_caveats: list[str] | None = Field(
+        default=None,
+        alias="parameterCaveats",
+        description="Parameter usage caveats extracted from descriptions",
+    )
+    edge_case_notes: list[str] | None = Field(
+        default=None,
+        alias="edgeCaseNotes",
+        description="Edge-case behavior notes extracted from descriptions",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class McpTool(BaseModel):
     """An individual MCP tool exposed by a tool listing.
 
@@ -49,13 +180,30 @@ class McpTool(BaseModel):
         alias="outputSchema",
         description="JSON Schema for the output this tool returns",
     )
-    meta: dict[str, Any] | None = Field(
+    meta: McpToolMeta | None = Field(
         default=None,
         alias="_meta",
-        description=(
-            "MCP metadata extensions. May include contextRequirements and "
-            "rate-limit hints (maxRequestsPerMinute, cooldownMs, etc)."
-        ),
+        description="MCP metadata extensions",
+    )
+    execute_eligible: bool | None = Field(
+        default=None,
+        alias="executeEligible",
+        description="Whether this method is execute-eligible",
+    )
+    execute_price_usd: str | None = Field(
+        default=None,
+        alias="executePriceUsd",
+        description="Explicit execute price visibility for this method",
+    )
+    has_structured_guidance: bool | None = Field(
+        default=None,
+        alias="hasStructuredGuidance",
+        description="Whether this method has normalized guidance hints",
+    )
+    structured_guidance: StructuredMethodGuidanceHints | None = Field(
+        default=None,
+        alias="structuredGuidance",
+        description="Structured guidance hints derived from method descriptions",
     )
 
     model_config = {"populate_by_name": True}
@@ -138,6 +286,10 @@ class SearchResponse(BaseModel):
     """
 
     tools: list[Tool] = Field(..., description="Array of matching tools")
+    mode: DiscoveryMode | None = Field(
+        default=None,
+        description="Discovery mode used by the server",
+    )
     query: str = Field(..., description="The search query that was used")
     count: int = Field(..., description="Total number of results")
 
@@ -157,6 +309,36 @@ class SearchOptions(BaseModel):
         le=50,
         description="Maximum number of results (1-50, default 10)",
     )
+    mode: DiscoveryMode | None = Field(
+        default=None,
+        description="Discovery mode with billing semantics",
+    )
+    surface: McpToolSurface | None = Field(
+        default=None,
+        description="Optional explicit method surface filter",
+    )
+    query_eligible: bool | None = Field(
+        default=None,
+        alias="queryEligible",
+        description="Require methods marked query eligible",
+    )
+    require_execute_pricing: bool | None = Field(
+        default=None,
+        alias="requireExecutePricing",
+        description="Require explicit method execute pricing",
+    )
+    exclude_latency_classes: list[McpToolLatencyClass] | None = Field(
+        default=None,
+        alias="excludeLatencyClasses",
+        description="Exclude methods by latency class",
+    )
+    exclude_slow: bool | None = Field(
+        default=None,
+        alias="excludeSlow",
+        description="Exclude slow methods in query mode",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class ExecuteOptions(BaseModel):
@@ -187,6 +369,25 @@ class ExecuteOptions(BaseModel):
         alias="idempotencyKey",
         description="Optional idempotency key (UUID recommended) for safe retries",
     )
+    mode: Literal["execute"] | None = Field(
+        default=None,
+        description="Explicit execute mode label for request clarity",
+    )
+    session_id: str | None = Field(
+        default=None,
+        alias="sessionId",
+        description="Optional execute session identifier",
+    )
+    max_spend_usd: str | None = Field(
+        default=None,
+        alias="maxSpendUsd",
+        description="Optional per-session spend budget envelope (USD)",
+    )
+    close_session: bool | None = Field(
+        default=None,
+        alias="closeSession",
+        description="Request session closure after this execute call settles",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -196,6 +397,33 @@ class ToolInfo(BaseModel):
 
     id: str
     name: str
+
+
+class ExecuteMethodInfo(BaseModel):
+    """Method-level execute pricing details for a call."""
+
+    name: str
+    execute_price_usd: str = Field(..., alias="executePriceUsd")
+
+    model_config = {"populate_by_name": True}
+
+
+class ExecuteSessionSpend(BaseModel):
+    """Spend envelope visibility for execute calls and sessions."""
+
+    mode: Literal["execute"] = "execute"
+    session_id: str | None = Field(default=None, alias="sessionId")
+    method_price: str = Field(..., alias="methodPrice")
+    spent: str
+    remaining: str | None = None
+    max_spend: str | None = Field(default=None, alias="maxSpend")
+    status: ExecuteSessionStatus | None = None
+    expires_at: str | None = Field(default=None, alias="expiresAt")
+    close_requested: bool | None = Field(default=None, alias="closeRequested")
+    pending_accrued_count: int | None = Field(default=None, alias="pendingAccruedCount")
+    pending_accrued_usd: str | None = Field(default=None, alias="pendingAccruedUsd")
+
+    model_config = {"populate_by_name": True}
 
 
 class ExecuteApiSuccessResponse(BaseModel):
@@ -209,8 +437,20 @@ class ExecuteApiSuccessResponse(BaseModel):
     """
 
     success: Literal[True] = Field(..., description="Always True for success responses")
+    mode: Literal["execute"] = Field(
+        default="execute",
+        description="Explicit mode label for clarity",
+    )
     result: Any = Field(..., description="The result data from the tool execution")
     tool: ToolInfo = Field(..., description="Information about the executed tool")
+    method: ExecuteMethodInfo = Field(
+        ...,
+        description="Method-level execute pricing used for this call",
+    )
+    session: ExecuteSessionSpend = Field(
+        ...,
+        description="Spend envelope visibility for execute sessions",
+    )
     duration_ms: int = Field(
         ...,
         alias="durationMs",
@@ -230,6 +470,10 @@ class ExecuteApiErrorResponse(BaseModel):
     """
 
     error: str = Field(..., description="Human-readable error message")
+    mode: Literal["execute"] | None = Field(
+        default=None,
+        description="Explicit mode label for clarity",
+    )
     code: str | None = Field(
         default=None,
         description="Error code for programmatic handling",
@@ -238,6 +482,10 @@ class ExecuteApiErrorResponse(BaseModel):
         default=None,
         alias="helpUrl",
         description="URL to help resolve the issue",
+    )
+    session: ExecuteSessionSpend | None = Field(
+        default=None,
+        description="Optional spend envelope context when available",
     )
 
     model_config = {"populate_by_name": True}
@@ -252,9 +500,52 @@ class ExecutionResult(BaseModel):
         duration_ms: Execution duration in milliseconds
     """
 
+    mode: Literal["execute"] = Field(
+        default="execute",
+        description="Explicit mode label for clarity",
+    )
     result: Any = Field(..., description="The data returned by the tool")
     tool: ToolInfo = Field(..., description="Information about the executed tool")
+    method: ExecuteMethodInfo = Field(
+        ...,
+        description="Method-level execute pricing used for this call",
+    )
+    session: ExecuteSessionSpend = Field(
+        ...,
+        description="Spend envelope visibility for execute calls",
+    )
     duration_ms: int = Field(..., description="Execution duration in milliseconds")
+
+
+class ExecuteSessionStartOptions(BaseModel):
+    """Options for starting an execute session."""
+
+    max_spend_usd: str = Field(
+        ...,
+        alias="maxSpendUsd",
+        description="Maximum spend budget for the session (USD string)",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ExecuteSessionApiSuccessResponse(BaseModel):
+    """Successful execute-session lifecycle response."""
+
+    success: Literal[True]
+    mode: Literal["execute"] = "execute"
+    session: ExecuteSessionSpend
+
+    model_config = {"populate_by_name": True}
+
+
+class ExecuteSessionResult(BaseModel):
+    """Resolved execute-session lifecycle result returned by the SDK."""
+
+    mode: Literal["execute"] = "execute"
+    session: ExecuteSessionSpend
+
+    model_config = {"populate_by_name": True}
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +721,15 @@ ContextErrorCode = Literal[
     "payment_failed",
     "execution_failed",
     "query_failed",
+    "invalid_tool_method",
+    "method_not_execute_eligible",
+    "invalid_max_spend",
+    "session_not_found",
+    "session_forbidden",
+    "session_closed",
+    "session_expired",
+    "max_spend_mismatch",
+    "session_budget_exceeded",
 ]
 
 

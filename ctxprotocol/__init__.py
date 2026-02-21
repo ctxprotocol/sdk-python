@@ -31,7 +31,7 @@ Example:
 For more information, visit: https://ctxprotocol.com
 """
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
 
 # Re-export everything from client module
 from ctxprotocol.client import (
@@ -46,8 +46,17 @@ from ctxprotocol.client.types import (
     ContextErrorCode,
     ExecuteApiErrorResponse,
     ExecuteApiSuccessResponse,
+    ExecuteMethodInfo,
     ExecuteOptions,
+    ExecuteSessionApiSuccessResponse,
+    ExecuteSessionResult,
+    ExecuteSessionSpend,
+    ExecuteSessionStartOptions,
+    ExecuteSessionStatus,
     ExecutionResult,
+    McpToolMeta,
+    McpToolPricingMeta,
+    McpToolRateLimitHints,
     McpTool,
     # Query types (pay-per-response)
     QueryApiSuccessResponse,
@@ -140,12 +149,21 @@ __all__ = [
     "ContextClientOptions",
     "Tool",
     "McpTool",
+    "McpToolMeta",
+    "McpToolPricingMeta",
+    "McpToolRateLimitHints",
     "SearchResponse",
     "SearchOptions",
     "ExecuteOptions",
+    "ExecuteSessionStartOptions",
+    "ExecuteSessionStatus",
+    "ExecuteSessionSpend",
+    "ExecuteSessionResult",
     "ExecutionResult",
+    "ExecuteMethodInfo",
     "ExecuteApiSuccessResponse",
     "ExecuteApiErrorResponse",
+    "ExecuteSessionApiSuccessResponse",
     "ToolInfo",
     # Query types (pay-per-response)
     "QueryOptions",
