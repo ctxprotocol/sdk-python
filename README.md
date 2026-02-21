@@ -87,7 +87,7 @@ result = await client.tools.execute(
 print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you curated answers — the server handles answer-safe tool discovery, multi-tool orchestration (up to 100 MCP calls per query turn), self-healing retries, completeness checks, model-aware context budgeting, and AI synthesis for one flat fee:
+**Query mode** gives you curated answers — the server handles answer-safe tool discovery, multi-tool orchestration (up to 100 MCP calls per response turn), self-healing retries, completeness checks, model-aware context budgeting, and AI synthesis for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
@@ -101,6 +101,9 @@ print(answer.data_url)    # Optional blob URL with full data
 ```
 
 > Mixed listings are first-class: one listing can expose methods to both surfaces. Methods without `_meta.pricing.executeUsd` remain query-only until priced.
+>
+> Compatibility: SDK/API payload fields such as `price` and `price_per_query` are retained for backward compatibility. In Query mode, they represent listing-level **price per response turn**.
+> A future major release can add response-named aliases (for example, `price_per_response`) before deprecating legacy names.
 
 ## Quick Start
 
@@ -231,7 +234,7 @@ closed = await client.tools.close_session("sess_123")
 
 #### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?)`
 
-Run an agentic query. The server discovers answer-safe tools, executes the full pipeline (up to 100 MCP calls per query turn), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
+Run an agentic query. The server discovers answer-safe tools, executes the full pipeline (up to 100 MCP calls per response turn), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
 
 ```python
 # Simple string

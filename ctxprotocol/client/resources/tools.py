@@ -79,18 +79,23 @@ class Tools:
             >>> print(result.result)  # The tool's output
             >>> print(result.duration_ms)  # Execution time
         """
+        payload: dict[str, Any] = {
+            "toolId": tool_id,
+            "toolName": tool_name,
+            "args": args or {},
+            "mode": mode or "execute",
+        }
+        if session_id is not None:
+            payload["sessionId"] = session_id
+        if max_spend_usd is not None:
+            payload["maxSpendUsd"] = max_spend_usd
+        if close_session is not None:
+            payload["closeSession"] = close_session
+
         response = await self._client.fetch(
             "/api/v1/tools/execute",
             method="POST",
-            json_body={
-                "toolId": tool_id,
-                "toolName": tool_name,
-                "args": args or {},
-                "mode": mode or "execute",
-                "sessionId": session_id,
-                "maxSpendUsd": max_spend_usd,
-                "closeSession": close_session,
-            },
+            json_body=payload,
             extra_headers=(
                 {"Idempotency-Key": idempotency_key}
                 if idempotency_key
