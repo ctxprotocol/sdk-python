@@ -1,4 +1,4 @@
-"""Example client using both Query and Execute surfaces."""
+"""Example client using both Query and Execute modes."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ async def main() -> None:
     api_key = os.environ.get("CONTEXT_API_KEY", "sk_live_your_api_key_here")
 
     async with ContextClient(api_key=api_key) as client:
-        # Query surface: curated, pay-per-response.
+        # Query mode: curated, pay-per-response.
         answer = await client.query.run("What are the top whale movements on Base?")
-        print("Query response:")
+        print("Query mode response:")
         print(answer.response)
 
-        # Execute surface: explicit method pricing + session budget envelope.
+        # Execute mode: explicit method pricing + session spending limit.
         execute_tools = await client.discovery.search(
             "gas prices",
             mode="execute",
@@ -43,9 +43,9 @@ async def main() -> None:
             close_session=True,
         )
 
-        print("\nExecute result:")
+        print("\nExecute mode result:")
         print(result.result)
-        print("\nExecute spend envelope:")
+        print("\nExecute spending limit:")
         print(result.session.model_dump())
 
         # Optional: confirm closed lifecycle state.
