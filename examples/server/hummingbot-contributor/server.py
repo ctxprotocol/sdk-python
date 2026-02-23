@@ -329,9 +329,18 @@ Supported exchanges: All CEX connectors.""",
     ),
 )
 async def get_order_book(
-    connector_name: Annotated[str, Field(description="Exchange connector name")],
-    trading_pair: Annotated[str, Field(description="Trading pair (e.g., 'BTC-USDT')")],
-    depth: Annotated[int, Field(description="Number of levels to fetch", default=10)] = 10,
+    connector_name: Annotated[
+        str,
+        Field(description="Exchange connector name", examples=["binance"]),
+    ],
+    trading_pair: Annotated[
+        str,
+        Field(description="Trading pair (e.g., 'BTC-USDT')", examples=["BTC-USDT"]),
+    ],
+    depth: Annotated[
+        int,
+        Field(description="Number of levels to fetch", default=10, examples=[10, 20]),
+    ] = 10,
 ) -> OrderBookResult:
     """Get order book snapshot for a trading pair."""
     client = await get_hb_client()
