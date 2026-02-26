@@ -16,13 +16,23 @@ class ContextClientOptions(BaseModel):
 
     Attributes:
         api_key: Your Context Protocol API key (e.g., "sk_live_abc123...")
-        base_url: Base URL for the Context Protocol API. Defaults to "https://ctxprotocol.com"
+        base_url: Base URL for the Context Protocol API. Defaults to "https://www.ctxprotocol.com"
+        request_timeout_seconds: Timeout for non-streaming requests in seconds
+        stream_timeout_seconds: Timeout for establishing streaming requests in seconds
     """
 
     api_key: str = Field(..., description="Your Context Protocol API key")
     base_url: str = Field(
-        default="https://ctxprotocol.com",
+        default="https://www.ctxprotocol.com",
         description="Base URL for the Context Protocol API",
+    )
+    request_timeout_seconds: float = Field(
+        default=300.0,
+        description="Timeout for non-streaming requests in seconds",
+    )
+    stream_timeout_seconds: float = Field(
+        default=600.0,
+        description="Timeout for establishing streaming requests in seconds",
     )
 
 
@@ -553,6 +563,9 @@ class ExecuteSessionResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+QueryDepth = Literal["fast", "auto", "deep"]
+
+
 class QueryOptions(BaseModel):
     """Options for the agentic query endpoint (pay-per-response).
 
@@ -567,6 +580,7 @@ class QueryOptions(BaseModel):
         model_id: Optional model ID for query orchestration/synthesis
         include_data: Include execution data inline in the query response
         include_data_url: Persist execution data to blob and return URL
+        query_depth: Query orchestration depth mode (fast, auto, or deep)
     """
 
     query: str = Field(..., description="The natural-language question to answer")
@@ -588,6 +602,14 @@ class QueryOptions(BaseModel):
         default=None,
         alias="includeDataUrl",
         description="Persist execution data to blob and return URL",
+    )
+    query_depth: QueryDepth | None = Field(
+        default=None,
+        alias="queryDepth",
+        description=(
+            "Query orchestration depth mode: fast (lower latency), "
+            "auto (server-routed), or deep (completeness-oriented)"
+        ),
     )
     idempotency_key: str | None = Field(
         default=None,

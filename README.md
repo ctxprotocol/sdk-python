@@ -92,6 +92,7 @@ print(result.session)  # method_price, spent, remaining, max_spend, ...
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
     model_id="glm-model",      # optional: choose a supported model
+    query_depth="auto",        # optional: fast | auto | deep
     include_data_url=True,     # optional: persist full execution data to blob
 )
 print(answer.response)    # AI-synthesized answer
@@ -145,7 +146,9 @@ See a full dual-surface client script in [`examples/two-surfaces-client.py`](./e
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `api_key` | `str` | Yes | — | Your Context Protocol API key |
-| `base_url` | `str` | No | `https://ctxprotocol.com` | API base URL (for development) |
+| `base_url` | `str` | No | `https://www.ctxprotocol.com` | API base URL (for development) |
+| `request_timeout_seconds` | `float` | No | `300.0` | Timeout for non-streaming API calls |
+| `stream_timeout_seconds` | `float` | No | `600.0` | Timeout for establishing streaming API calls |
 
 ```python
 # Production
@@ -155,6 +158,8 @@ client = ContextClient(api_key=os.environ["CONTEXT_API_KEY"])
 client = ContextClient(
     api_key="sk_test_...",
     base_url="http://localhost:3000",
+    request_timeout_seconds=420.0,
+    stream_timeout_seconds=840.0,
 )
 ```
 
@@ -232,9 +237,14 @@ closed = await client.tools.close_session("sess_123")
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?)`
+#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, query_depth?, idempotency_key?)`
 
 Run an agentic query. The server discovers answer-safe tools, executes the full pipeline (up to 100 MCP calls per response turn), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
+
+`query_depth` controls orchestration depth:
+- `fast`: lower-latency path for simple lookups.
+- `auto`: server routes to either `fast` or `deep` from query intent + selected tool complexity.
+- `deep`: completeness-oriented path (default when omitted).
 
 ```python
 # Simple string
@@ -245,6 +255,7 @@ answer = await client.query.run(
     query="Analyze whale activity on Base",
     tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
     model_id="kimi-model-thinking",          # optional
+    query_depth="auto",                      # optional: fast | auto | deep
     include_data=True,                       # optional: include execution data inline
     include_data_url=True,                   # optional: include blob URL for full data
 )
@@ -257,12 +268,17 @@ print(answer.data)          # Optional execution data (when include_data=True)
 print(answer.data_url)      # Optional blob URL (when include_data_url=True)
 ```
 
-#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?)`
+When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
+
+#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?, query_depth?, idempotency_key?)`
 
 Same as `run()` but streams events in real-time via SSE.
 
 ```python
-async for event in client.query.stream("What are the top whale movements?"):
+async for event in client.query.stream(
+    query="What are the top whale movements?",
+    query_depth="fast",
+):
     if event.type == "tool-status":
         print(f"Tool {event.tool.name}: {event.status}")
     elif event.type == "text-delta":

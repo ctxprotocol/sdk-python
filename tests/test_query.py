@@ -19,6 +19,7 @@ from ctxprotocol.client.client import ContextClient
 from ctxprotocol.client.types import (
     ContextError,
     QueryCost,
+    QueryOptions,
     QueryResult,
     QueryStreamDoneEvent,
     QueryStreamTextDeltaEvent,
@@ -97,7 +98,7 @@ def _make_mock_response(
     return httpx.Response(
         status_code=status_code,
         json=data,
-        request=httpx.Request("POST", "https://ctxprotocol.com/api/v1/query"),
+        request=httpx.Request("POST", "https://www.ctxprotocol.com/api/v1/query"),
     )
 
 
@@ -186,6 +187,7 @@ class TestQueryRun:
                 model_id="glm-model",
                 include_data=True,
                 include_data_url=True,
+                query_depth="auto",
             )
 
         mock_fetch.assert_called_once_with(
@@ -198,6 +200,7 @@ class TestQueryRun:
                 "modelId": "glm-model",
                 "includeData": True,
                 "includeDataUrl": True,
+                "queryDepth": "auto",
             },
             extra_headers=None,
         )
@@ -206,6 +209,15 @@ class TestQueryRun:
             result.data_url
             == "https://example.public.blob.vercel-storage.com/data.json"
         )
+
+    def test_query_options_supports_query_depth_and_alias(self) -> None:
+        """QueryOptions accepts query_depth and queryDepth aliases."""
+        snake_case = QueryOptions(query="test", query_depth="fast")
+        camel_case = QueryOptions(query="test", queryDepth="deep")
+
+        assert snake_case.query_depth == "fast"
+        assert camel_case.query_depth == "deep"
+        assert snake_case.model_dump(by_alias=True)["queryDepth"] == "fast"
 
     async def test_sends_idempotency_header_when_provided(self) -> None:
         """Explicit idempotency key is forwarded as request header."""
@@ -462,6 +474,7 @@ class TestQueryStream:
                 model_id="claude-sonnet-model",
                 include_data=True,
                 include_data_url=True,
+                query_depth="deep",
             ):
                 events.append(event)
 
@@ -469,6 +482,7 @@ class TestQueryStream:
         assert call_kwargs[1]["json_body"]["modelId"] == "claude-sonnet-model"
         assert call_kwargs[1]["json_body"]["includeData"] is True
         assert call_kwargs[1]["json_body"]["includeDataUrl"] is True
+        assert call_kwargs[1]["json_body"]["queryDepth"] == "deep"
 
     async def test_stream_forwards_idempotency_header(self) -> None:
         """Streaming query forwards explicit idempotency key."""

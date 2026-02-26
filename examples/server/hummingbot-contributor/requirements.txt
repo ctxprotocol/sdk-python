@@ -14,7 +14,7 @@ uvicorn[standard]>=0.30.0
 hummingbot-api-client>=1.2.6
 
 # Context Protocol SDK for payment verification
-ctxprotocol>=0.8.2
+ctxprotocol>=0.8.3
 
 # Environment management
 python-dotenv>=1.0.0

@@ -21,7 +21,7 @@ def _response(
     return httpx.Response(
         status_code=status_code,
         json=body,
-        request=httpx.Request(method, "https://ctxprotocol.com/test"),
+        request=httpx.Request(method, "https://www.ctxprotocol.com/test"),
     )
 
 

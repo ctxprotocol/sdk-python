@@ -17,6 +17,7 @@ from ctxprotocol.client.types import (
     ExecuteApiErrorResponse,
     QueryApiSuccessResponse,
     QueryCost,
+    QueryDepth,
     QueryResult,
     QueryStreamDoneEvent,
     QueryStreamTextDeltaEvent,
@@ -47,6 +48,7 @@ class Query:
         model_id: str | None = None,
         include_data: bool | None = None,
         include_data_url: bool | None = None,
+        query_depth: QueryDepth | None = None,
         idempotency_key: str | None = None,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
@@ -62,6 +64,7 @@ class Query:
             model_id: Optional model ID for query orchestration/synthesis
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
+            query_depth: Query orchestration depth mode (fast, auto, or deep)
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
@@ -97,6 +100,8 @@ class Query:
             request_body["includeData"] = include_data
         if include_data_url is not None:
             request_body["includeDataUrl"] = include_data_url
+        if query_depth is not None:
+            request_body["queryDepth"] = query_depth
 
         response = await self._client.fetch(
             "/api/v1/query",
@@ -140,6 +145,7 @@ class Query:
         model_id: str | None = None,
         include_data: bool | None = None,
         include_data_url: bool | None = None,
+        query_depth: QueryDepth | None = None,
         idempotency_key: str | None = None,
     ) -> AsyncGenerator[
         QueryStreamToolStatusEvent | QueryStreamTextDeltaEvent | QueryStreamDoneEvent,
@@ -158,6 +164,7 @@ class Query:
             model_id: Optional model ID for query orchestration/synthesis
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
+            query_depth: Query orchestration depth mode (fast, auto, or deep)
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Yields:
@@ -181,6 +188,8 @@ class Query:
             request_body["includeData"] = include_data
         if include_data_url is not None:
             request_body["includeDataUrl"] = include_data_url
+        if query_depth is not None:
+            request_body["queryDepth"] = query_depth
 
         response = await self._client.fetch_stream(
             "/api/v1/query",
