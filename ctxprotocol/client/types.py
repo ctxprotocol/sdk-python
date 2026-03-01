@@ -6,7 +6,7 @@ This module contains all Pydantic models and type definitions used by the client
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -580,6 +580,7 @@ class QueryOptions(BaseModel):
         model_id: Optional model ID for query orchestration/synthesis
         include_data: Include execution data inline in the query response
         include_data_url: Persist execution data to blob and return URL
+        include_developer_trace: Include machine-readable developer runtime traces
         query_depth: Query orchestration depth mode (fast, auto, or deep)
     """
 
@@ -602,6 +603,14 @@ class QueryOptions(BaseModel):
         default=None,
         alias="includeDataUrl",
         description="Persist execution data to blob and return URL",
+    )
+    include_developer_trace: bool | None = Field(
+        default=None,
+        alias="includeDeveloperTrace",
+        description=(
+            "Include machine-readable developer trace output with runtime details "
+            "(tool timeline, retries, fallback branches, loop checks)"
+        ),
     )
     query_depth: QueryDepth | None = Field(
         default=None,
@@ -662,6 +671,66 @@ class QueryCost(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class QueryDeveloperTraceToolRef(BaseModel):
+    """Tool reference attached to developer trace timeline steps."""
+
+    id: str | None = None
+    name: str | None = None
+    method: str | None = None
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceLoopInfo(BaseModel):
+    """Loop metadata attached to developer trace timeline steps."""
+
+    name: str | None = None
+    iteration: int | None = None
+    max_iterations: int | None = Field(default=None, alias="maxIterations")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceStep(BaseModel):
+    """Single timeline step in a query developer trace payload."""
+
+    step_type: str | None = Field(default=None, alias="stepType")
+    event: str | None = None
+    status: str | None = None
+    message: str | None = None
+    timestamp_ms: int | None = Field(default=None, alias="timestampMs")
+    tool: QueryDeveloperTraceToolRef | None = None
+    attempt: int | None = None
+    loop: QueryDeveloperTraceLoopInfo | None = None
+    metadata: dict[str, Any] | None = None
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceSummary(BaseModel):
+    """Aggregate counters for query developer trace behavior."""
+
+    tool_calls: int | None = Field(default=None, alias="toolCalls")
+    retry_count: int | None = Field(default=None, alias="retryCount")
+    self_heal_count: int | None = Field(default=None, alias="selfHealCount")
+    fallback_count: int | None = Field(default=None, alias="fallbackCount")
+    failure_count: int | None = Field(default=None, alias="failureCount")
+    recovery_count: int | None = Field(default=None, alias="recoveryCount")
+    completion_checks: int | None = Field(default=None, alias="completionChecks")
+    loop_count: int | None = Field(default=None, alias="loopCount")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTrace(BaseModel):
+    """Developer Mode trace payload returned per query response (opt-in)."""
+
+    summary: QueryDeveloperTraceSummary | None = None
+    timeline: list[QueryDeveloperTraceStep] | None = None
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
 class QueryResult(BaseModel):
     """The resolved result of a pay-per-response query.
 
@@ -672,6 +741,7 @@ class QueryResult(BaseModel):
         duration_ms: Total duration in milliseconds
         data: Optional execution data (when include_data is enabled)
         data_url: Optional blob URL for execution data (when include_data_url is enabled)
+        developer_trace: Optional machine-readable Developer Mode trace
     """
 
     response: str = Field(..., description="The AI-synthesized response text")
@@ -691,6 +761,11 @@ class QueryResult(BaseModel):
         alias="dataUrl",
         description="Optional blob URL for persisted execution data",
     )
+    developer_trace: QueryDeveloperTrace | None = Field(
+        default=None,
+        alias="developerTrace",
+        description="Optional machine-readable Developer Mode trace payload",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -705,6 +780,10 @@ class QueryApiSuccessResponse(BaseModel):
     duration_ms: int = Field(..., alias="durationMs")
     data: Any | None = None
     data_url: str | None = Field(default=None, alias="dataUrl")
+    developer_trace: QueryDeveloperTrace | None = Field(
+        default=None,
+        alias="developerTrace",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -724,11 +803,26 @@ class QueryStreamTextDeltaEvent(BaseModel):
     delta: str
 
 
+class QueryStreamDeveloperTraceEvent(BaseModel):
+    """Emitted when the server streams developer trace updates/chunks."""
+
+    type: Literal["developer-trace"]
+    trace: QueryDeveloperTrace
+
+
 class QueryStreamDoneEvent(BaseModel):
     """Emitted when the full response is complete."""
 
     type: Literal["done"]
     result: QueryResult
+
+
+QueryStreamEvent = Union[
+    QueryStreamToolStatusEvent,
+    QueryStreamTextDeltaEvent,
+    QueryStreamDeveloperTraceEvent,
+    QueryStreamDoneEvent,
+]
 
 
 # ---------------------------------------------------------------------------

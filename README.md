@@ -92,13 +92,15 @@ print(result.session)  # method_price, spent, remaining, max_spend, ...
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
     model_id="glm-model",      # optional: choose a supported model
-    query_depth="auto",        # optional: fast | auto | deep
+    query_depth="deep",        # optional: fast | auto | deep
     include_data_url=True,     # optional: persist full execution data to blob
+    include_developer_trace=True,  # optional: include runtime developer trace
 )
 print(answer.response)    # AI-synthesized answer
 print(answer.tools_used)  # Which tools were used
 print(answer.cost)        # Cost breakdown
 print(answer.data_url)    # Optional blob URL with full data
+print(answer.developer_trace.summary if answer.developer_trace else None)
 ```
 
 > Mixed listings are first-class: one listing can expose methods to both surfaces. Methods without `_meta.pricing.executeUsd` remain query-only until priced.
@@ -237,7 +239,7 @@ closed = await client.tools.close_session("sess_123")
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, query_depth?, idempotency_key?)`
+#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, idempotency_key?)`
 
 Run an agentic query. The server discovers answer-safe tools, executes the full pipeline (up to 100 MCP calls per response turn), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
 
@@ -258,6 +260,7 @@ answer = await client.query.run(
     query_depth="auto",                      # optional: fast | auto | deep
     include_data=True,                       # optional: include execution data inline
     include_data_url=True,                   # optional: include blob URL for full data
+    include_developer_trace=True,            # optional: include Developer Mode trace
 )
 
 print(answer.response)      # AI-synthesized text
@@ -266,13 +269,20 @@ print(answer.cost)          # QueryCost(model_cost_usd, tool_cost_usd, total_cos
 print(answer.duration_ms)   # Total time
 print(answer.data)          # Optional execution data (when include_data=True)
 print(answer.data_url)      # Optional blob URL (when include_data_url=True)
+print(answer.developer_trace.summary if answer.developer_trace else None)
 ```
 
 When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
 
-#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?, query_depth?, idempotency_key?)`
+#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, idempotency_key?)`
 
 Same as `run()` but streams events in real-time via SSE.
+
+Event types:
+- `tool-status`
+- `text-delta`
+- `developer-trace` (when `include_developer_trace=True`)
+- `done`
 
 ```python
 async for event in client.query.stream(

@@ -21,6 +21,7 @@ from ctxprotocol.client.types import (
     QueryCost,
     QueryOptions,
     QueryResult,
+    QueryStreamDeveloperTraceEvent,
     QueryStreamDoneEvent,
     QueryStreamTextDeltaEvent,
     QueryStreamToolStatusEvent,
@@ -49,6 +50,34 @@ MOCK_SUCCESS_RESPONSE: dict[str, Any] = {
     "durationMs": 4200,
 }
 
+MOCK_DEVELOPER_TRACE: dict[str, Any] = {
+    "summary": {
+        "toolCalls": 4,
+        "retryCount": 2,
+        "selfHealCount": 1,
+        "fallbackCount": 1,
+        "completionChecks": 3,
+        "loopCount": 2,
+    },
+    "timeline": [
+        {
+            "stepType": "tool-call",
+            "timestampMs": 120,
+            "tool": {
+                "id": "tool-uuid-1",
+                "name": "Whale Tracker",
+                "method": "get_whales",
+            },
+        },
+        {
+            "stepType": "retry",
+            "timestampMs": 420,
+            "attempt": 2,
+            "message": "Retrying after transient provider timeout",
+        },
+    ],
+}
+
 MOCK_ERROR_RESPONSE: dict[str, Any] = {
     "error": "Insufficient funds. Set a spending cap in the dashboard.",
     "code": "insufficient_allowance",
@@ -69,6 +98,48 @@ MOCK_SSE_LINES = [
             "type": "done",
             "result": {
                 "response": "Based on the latest data, whale activity is up 15%.",
+                "toolsUsed": [
+                    {"id": "tool-uuid-1", "name": "Whale Tracker", "skillCalls": 2}
+                ],
+                "cost": {
+                    "totalCostUsd": "0.012000",
+                    "toolCostUsd": "0.008000",
+                    "modelCostUsd": "0.004000",
+                },
+                "durationMs": 3800,
+            },
+        }
+    ),
+    "data: [DONE]",
+]
+
+MOCK_SSE_TRACE_LINES = [
+    "data: "
+    + json.dumps(
+        {
+            "type": "developer-trace",
+            "trace": {
+                "summary": {"retryCount": 2, "loopCount": 1},
+                "timeline": [{"stepType": "retry", "attempt": 2}],
+            },
+        }
+    ),
+    "data: "
+    + json.dumps(
+        {
+            "type": "developer-trace",
+            "trace": {
+                "summary": {"fallbackCount": 1, "completionChecks": 3},
+                "timeline": [{"stepType": "fallback", "message": "Switched branch"}],
+            },
+        }
+    ),
+    "data: "
+    + json.dumps(
+        {
+            "type": "done",
+            "result": {
+                "response": "Resolved with fallback branch.",
                 "toolsUsed": [
                     {"id": "tool-uuid-1", "name": "Whale Tracker", "skillCalls": 2}
                 ],
@@ -178,6 +249,7 @@ class TestQueryRun:
             **MOCK_SUCCESS_RESPONSE,
             "data": {"summary": "tool output"},
             "dataUrl": "https://example.public.blob.vercel-storage.com/data.json",
+            "developerTrace": MOCK_DEVELOPER_TRACE,
         }
 
         with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
@@ -187,6 +259,7 @@ class TestQueryRun:
                 model_id="glm-model",
                 include_data=True,
                 include_data_url=True,
+                include_developer_trace=True,
                 query_depth="auto",
             )
 
@@ -200,6 +273,7 @@ class TestQueryRun:
                 "modelId": "glm-model",
                 "includeData": True,
                 "includeDataUrl": True,
+                "includeDeveloperTrace": True,
                 "queryDepth": "auto",
             },
             extra_headers=None,
@@ -209,15 +283,67 @@ class TestQueryRun:
             result.data_url
             == "https://example.public.blob.vercel-storage.com/data.json"
         )
+        assert result.developer_trace is not None
+        assert result.developer_trace.summary is not None
+        assert result.developer_trace.summary.retry_count == 2
+
+    async def test_parses_developer_trace_when_present(self) -> None:
+        """developerTrace payload is deserialized into QueryResult."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = {
+                **MOCK_SUCCESS_RESPONSE,
+                "developerTrace": MOCK_DEVELOPER_TRACE,
+            }
+            result = await client.query.run("test query")
+
+        assert result.developer_trace is not None
+        assert result.developer_trace.summary is not None
+        assert result.developer_trace.summary.retry_count == 2
+        assert result.developer_trace.summary.tool_calls == 4
+
+    async def test_developer_trace_is_none_when_not_returned(self) -> None:
+        """Query result keeps developer_trace unset when API omits it."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+            result = await client.query.run("test query")
+
+        assert result.developer_trace is None
+
+    async def test_builds_synthetic_trace_when_requested_and_missing(self) -> None:
+        """When include_developer_trace is set, SDK synthesizes fallback trace if API omits it."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+            result = await client.query.run(
+                query="test query",
+                include_developer_trace=True,
+            )
+
+        assert result.developer_trace is not None
+        assert result.developer_trace.summary is not None
+        assert result.developer_trace.summary.tool_calls == 4
+        assert result.developer_trace.summary.retry_count == 0
+        assert result.developer_trace.timeline is not None
+        assert len(result.developer_trace.timeline) == 2
 
     def test_query_options_supports_query_depth_and_alias(self) -> None:
         """QueryOptions accepts query_depth and queryDepth aliases."""
         snake_case = QueryOptions(query="test", query_depth="fast")
         camel_case = QueryOptions(query="test", queryDepth="deep")
+        trace_alias = QueryOptions(query="test", includeDeveloperTrace=True)
 
         assert snake_case.query_depth == "fast"
         assert camel_case.query_depth == "deep"
         assert snake_case.model_dump(by_alias=True)["queryDepth"] == "fast"
+        assert trace_alias.include_developer_trace is True
+        assert (
+            trace_alias.model_dump(by_alias=True)["includeDeveloperTrace"] is True
+        )
 
     async def test_sends_idempotency_header_when_provided(self) -> None:
         """Explicit idempotency key is forwarded as request header."""
@@ -474,6 +600,7 @@ class TestQueryStream:
                 model_id="claude-sonnet-model",
                 include_data=True,
                 include_data_url=True,
+                include_developer_trace=True,
                 query_depth="deep",
             ):
                 events.append(event)
@@ -482,7 +609,68 @@ class TestQueryStream:
         assert call_kwargs[1]["json_body"]["modelId"] == "claude-sonnet-model"
         assert call_kwargs[1]["json_body"]["includeData"] is True
         assert call_kwargs[1]["json_body"]["includeDataUrl"] is True
+        assert call_kwargs[1]["json_body"]["includeDeveloperTrace"] is True
         assert call_kwargs[1]["json_body"]["queryDepth"] == "deep"
+
+    async def test_stream_handles_trace_events_and_aggregates_done_trace(self) -> None:
+        """Trace events are emitted and merged into done.result.developer_trace."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(MOCK_SSE_TRACE_LINES)
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream("test"):
+                events.append(event)
+
+        trace_events = [
+            e for e in events if isinstance(e, QueryStreamDeveloperTraceEvent)
+        ]
+        assert len(trace_events) == 2
+        assert trace_events[0].trace.summary is not None
+        assert trace_events[0].trace.summary.retry_count == 2
+        assert trace_events[1].trace.summary is not None
+        assert trace_events[1].trace.summary.fallback_count == 1
+
+        done_events = [e for e in events if isinstance(e, QueryStreamDoneEvent)]
+        assert len(done_events) == 1
+        done_trace = done_events[0].result.developer_trace
+        assert done_trace is not None
+        assert done_trace.summary is not None
+        assert done_trace.summary.retry_count == 2
+        assert done_trace.summary.fallback_count == 1
+        assert done_trace.summary.completion_checks == 3
+        assert done_trace.timeline is not None
+        assert len(done_trace.timeline) == 2
+
+    async def test_stream_builds_synthetic_done_trace_when_requested_and_missing(self) -> None:
+        """When include_developer_trace is set, stream done result gets fallback trace if backend omits it."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(MOCK_SSE_LINES)
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream(
+                query="test query",
+                include_developer_trace=True,
+            ):
+                events.append(event)
+
+        done_events = [e for e in events if isinstance(e, QueryStreamDoneEvent)]
+        assert len(done_events) == 1
+        done_trace = done_events[0].result.developer_trace
+        assert done_trace is not None
+        assert done_trace.summary is not None
+        assert done_trace.summary.tool_calls == 2
+        assert done_trace.timeline is not None
+        assert len(done_trace.timeline) > 0
 
     async def test_stream_forwards_idempotency_header(self) -> None:
         """Streaming query forwards explicit idempotency key."""

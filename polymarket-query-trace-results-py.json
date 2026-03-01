@@ -1,0 +1,417 @@
+{
+  "generatedAt": "2026-02-28T18:36:10.641382+00:00",
+  "toolId": "294100e8-c648-4e5f-a254-95a14b56e398",
+  "promptCount": 11,
+  "successCount": 11,
+  "failureCount": 0,
+  "totals": {
+    "costUsd": 0.5869939999999999,
+    "durationMs": 268409,
+    "skillCalls": 51,
+    "retryCount": 0,
+    "selfHealCount": 0,
+    "fallbackCount": 0,
+    "failureCount": 0,
+    "recoveryCount": 0,
+    "completionChecks": 0,
+    "loopCount": 0,
+    "averageDurationMs": 24401,
+    "averageCostUsd": 0.053363
+  },
+  "streamProbe": {
+    "eventCounts": {
+      "tool-status": 7,
+      "text-delta": 75,
+      "developer-trace": 0,
+      "done": 1
+    },
+    "doneTracePresent": true
+  },
+  "reports": [
+    {
+      "index": 1,
+      "prompt": "What are the top 5 prediction markets by volume right now?",
+      "ok": true,
+      "durationMs": 20211,
+      "costUsd": "0.061589",
+      "responsePreview": "Based on data from February 28, 2026, the top 5 prediction markets by 24-hour volume are:\n\n| Rank | Title | 24h Volume | Total Volume | End Date |\n| :--- | :--- | :--- | :--- | :--- |\n| 1 | Elon Musk # tweets February 24 - March 3, 2026? | $11,888,268.54 | $35,627,379.67 | 2026-03-03 |\n| 2 | Khamenei out as Supreme Lea",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 5
+        }
+      ],
+      "totalSkillCalls": 5,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 5,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 2,
+      "prompt": "Search for markets related to the 2028 presidential election",
+      "ok": true,
+      "durationMs": 16833,
+      "costUsd": "0.040297",
+      "responsePreview": "Based on market search results, here are the active markets for the 2028 U.S. Presidential Election:\n\n### General Election Markets\n| Market Title | Volume | End Date |\n| :--- | :--- | :--- |\n| Presidential Election Winner 2028 | $343,756,839.23 | 2028-11-07 |\n| Which party wins 2028 US Presidential Election? | $1,396,8",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 2
+        }
+      ],
+      "totalSkillCalls": 2,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 2,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 3,
+      "prompt": "How efficient is the pricing on the Trump vs Biden market? Is there arbitrage?",
+      "ok": true,
+      "durationMs": 17181,
+      "costUsd": "0.040545",
+      "responsePreview": "Based on the data for the market regarding specific nicknames used by Trump by February 28, the pricing is currently **inefficient** and considered **poor**.\n\nThere is no traditional arbitrage opportunity (which would require the sum of outcomes to be less than $1.00); instead, there is a massive **negative arbitrage**",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 6
+        }
+      ],
+      "totalSkillCalls": 6,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 6,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 4,
+      "prompt": "Analyze whale flow on the Fed rate decision event who are the top holders and what is their cost basis?",
+      "ok": true,
+      "durationMs": 35488,
+      "costUsd": "0.052792",
+      "responsePreview": "Based on recent data for the **Fed decision in March?** event, the smart money signal is a high-confidence \"NO,\" with approximately $7.93 million held in NO positions compared to only $22,204 in YES. \n\nThe market is currently near resolution (at 0.5% YES), resulting in high concentration among a few top holders.\n\n### T",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 9
+        }
+      ],
+      "totalSkillCalls": 9,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 9,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 5,
+      "prompt": "Show me markets between 30-70% probability with high volume that might be mispriced",
+      "ok": true,
+      "durationMs": 19048,
+      "costUsd": "0.043008",
+      "responsePreview": "Based on recent market data, here are high-volume opportunities within the 30-70% probability range, including one identified as a likely mispricing:\n\n| Market | Price | Efficiency | Recommendation |\n| :--- | :--- | :--- | :--- |\n| **Rockets vs. Heat** | 0.555 | Good (Vig: -100 Bps) | \ud83d\udea8 **Arbitrage opportunity!** Sum o",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 5
+        }
+      ],
+      "totalSkillCalls": 5,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 5,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 6,
+      "prompt": "Analyze my Polymarket positions which ones have poor exit liquidity?",
+      "ok": true,
+      "durationMs": 18045,
+      "costUsd": "0.038804",
+      "responsePreview": "Based on your current portfolio data from February 28, 2026, you have no active Polymarket positions to analyze.\n\n| Metric | Value |\n| :--- | :--- |\n| **Total Positions Analyzed** | 0 |\n| **Total Value** | 0 |\n| **Positions with Poor Liquidity** | 0 |\n| **Risky Positions** | 0 |\n\n**Recommendation:**\nYou have no active ",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 3
+        }
+      ],
+      "totalSkillCalls": 3,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 3,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 7,
+      "prompt": "Compare the Polymarket odds vs Kalshi odds on the next Fed meeting outcome",
+      "ok": true,
+      "durationMs": 21376,
+      "costUsd": "0.042780",
+      "responsePreview": "Based on data from a past query regarding the Federal Reserve's March 2026 meeting, here is the comparison between Polymarket and Kalshi odds. Note that data was only available for Polymarket for this specific outcome.\n\n### Fed Meeting Outcome Odds (March 2026)\n\n| Metric | Polymarket | Kalshi |\n| :--- | :--- | :--- |\n|",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 4
+        }
+      ],
+      "totalSkillCalls": 4,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 4,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 8,
+      "prompt": "Find correlated markets where a move in one should predict a move in another",
+      "ok": true,
+      "durationMs": 11866,
+      "costUsd": "0.037414",
+      "responsePreview": "Based on recent market analysis, several geopolitical and social markets show moderate correlations where shifts in one may predict moves in others. \n\n### Moderately Correlated Markets (Score: 60)\nThese markets are likely to move in tandem due to shared geopolitical drivers.\n\n| Source Market | Correlated Market | Corre",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 4
+        }
+      ],
+      "totalSkillCalls": 4,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 4,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 9,
+      "prompt": "What are the orderbook depth and spread for all outcomes on event slug 'democratic-presidential-nominee-2028'?",
+      "ok": true,
+      "durationMs": 68591,
+      "costUsd": "0.149144",
+      "responsePreview": "For the event **Democratic Presidential Nominee 2028**, here are the orderbook depth and spread details for the primary outcomes. Note that many low-probability outcomes (labeled \"Person A-Z\") currently show zero depth and a spread of 1.\n\n| Candidate | Price | Spread | Bid Depth (USD) | Ask Depth (USD) | Total Depth (U",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 11
+        }
+      ],
+      "totalSkillCalls": 11,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 11,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 10,
+      "prompt": "Browse all markets in the Politics category sorted by recent activity",
+      "ok": true,
+      "durationMs": 14093,
+      "costUsd": "0.047210",
+      "responsePreview": "Here are the 20 most active markets in the Politics category as of February 28, 2026, based on a past query:\n\n| Market Title | Current Price | Total Volume | Liquidity | End Date |\n| :--- | :--- | :--- | :--- | :--- |\n| **Democratic Presidential Nominee 2028** | 0.0185 | $731,008,081.05 | $39,664,554.49 | 2028-11-07 |\n",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 1
+        }
+      ],
+      "totalSkillCalls": 1,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 1,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    },
+    {
+      "index": 11,
+      "prompt": "Build a high-conviction workflow: find mispriced markets, check whale positioning, then verify liquidity",
+      "ok": true,
+      "durationMs": 25677,
+      "costUsd": "0.033411",
+      "responsePreview": "Based on the data from your high-conviction sequential workflow, 12 markets were discovered and 8 were analyzed. Three setups have been identified as high-conviction opportunities, primarily focused on \"NO\" positions in geopolitical events.\n\n### High-Conviction Market Setups\n\n| Rank | Market | Signal | Current Price | ",
+      "toolsUsed": [
+        {
+          "id": "294100e8-c648-4e5f-a254-95a14b56e398",
+          "name": "Polymarket",
+          "skillCalls": 1
+        }
+      ],
+      "totalSkillCalls": 1,
+      "developerTracePresent": true,
+      "traceSummary": {
+        "toolCalls": 1,
+        "retryCount": 0,
+        "selfHealCount": 0,
+        "fallbackCount": 0,
+        "failureCount": 0,
+        "recoveryCount": 0,
+        "completionChecks": 0,
+        "loopCount": 0,
+        "timelineLength": 1
+      },
+      "topTimelineEvents": [
+        {
+          "key": "tool-call",
+          "count": 1
+        }
+      ],
+      "inefficiencySignals": []
+    }
+  ]
+}

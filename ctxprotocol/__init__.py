@@ -31,7 +31,7 @@ Example:
 For more information, visit: https://ctxprotocol.com
 """
 
-__version__ = "0.8.3"
+__version__ = "0.8.4"
 
 # Re-export everything from client module
 from ctxprotocol.client import (
@@ -61,6 +61,13 @@ from ctxprotocol.client.types import (
     # Query types (pay-per-response)
     QueryApiSuccessResponse,
     QueryCost,
+    QueryDeveloperTrace,
+    QueryDeveloperTraceSummary,
+    QueryDeveloperTraceStep,
+    QueryDeveloperTraceToolRef,
+    QueryDeveloperTraceLoopInfo,
+    QueryStreamDeveloperTraceEvent,
+    QueryStreamEvent,
     QueryOptions,
     QueryResult,
     QueryStreamDoneEvent,
@@ -170,10 +177,17 @@ __all__ = [
     "QueryResult",
     "QueryToolUsage",
     "QueryCost",
+    "QueryDeveloperTrace",
+    "QueryDeveloperTraceSummary",
+    "QueryDeveloperTraceStep",
+    "QueryDeveloperTraceToolRef",
+    "QueryDeveloperTraceLoopInfo",
     "QueryApiSuccessResponse",
     "QueryStreamToolStatusEvent",
     "QueryStreamTextDeltaEvent",
+    "QueryStreamDeveloperTraceEvent",
     "QueryStreamDoneEvent",
+    "QueryStreamEvent",
     "ContextErrorCode",
     # Errors
     "ContextError",
