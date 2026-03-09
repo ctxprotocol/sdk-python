@@ -23,6 +23,7 @@ from ctxprotocol.client.types import (
     QueryResult,
     QueryStreamDeveloperTraceEvent,
     QueryStreamDoneEvent,
+    QueryStreamErrorEvent,
     QueryStreamTextDeltaEvent,
     QueryStreamToolStatusEvent,
     QueryToolUsage,
@@ -76,6 +77,14 @@ MOCK_DEVELOPER_TRACE: dict[str, Any] = {
             "message": "Retrying after transient provider timeout",
         },
     ],
+}
+
+MOCK_ORCHESTRATION_METRICS: dict[str, Any] = {
+    "parityStage": "synthesis_v2",
+    "orchestrationMode": "query",
+    "firstPassSuccess": True,
+    "capabilityMissSignaled": False,
+    "rediscoveryExecuted": False,
 }
 
 MOCK_ERROR_RESPONSE: dict[str, Any] = {
@@ -151,6 +160,15 @@ MOCK_SSE_TRACE_LINES = [
                 "durationMs": 3800,
             },
         }
+    ),
+    "data: [DONE]",
+]
+
+MOCK_SSE_ERROR_LINES = [
+    'data: {"type":"tool-status","status":"executing","tool":{"id":"","name":""}}',
+    (
+        'data: {"type":"error","error":"Query failed before completion",'
+        '"code":"query_failed","scope":"query","reasonCode":"execution_failed"}'
     ),
     "data: [DONE]",
 ]
@@ -250,6 +268,7 @@ class TestQueryRun:
             "data": {"summary": "tool output"},
             "dataUrl": "https://example.public.blob.vercel-storage.com/data.json",
             "developerTrace": MOCK_DEVELOPER_TRACE,
+            "orchestrationMetrics": MOCK_ORCHESTRATION_METRICS,
         }
 
         with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
@@ -261,6 +280,7 @@ class TestQueryRun:
                 include_data_url=True,
                 include_developer_trace=True,
                 query_depth="auto",
+                debug_scout_deep_mode="deep-light",
             )
 
         mock_fetch.assert_called_once_with(
@@ -275,6 +295,7 @@ class TestQueryRun:
                 "includeDataUrl": True,
                 "includeDeveloperTrace": True,
                 "queryDepth": "auto",
+                "debugScoutDeepMode": "deep-light",
             },
             extra_headers=None,
         )
@@ -286,6 +307,8 @@ class TestQueryRun:
         assert result.developer_trace is not None
         assert result.developer_trace.summary is not None
         assert result.developer_trace.summary.retry_count == 2
+        assert result.orchestration_metrics is not None
+        assert result.orchestration_metrics.first_pass_success is True
 
     async def test_parses_developer_trace_when_present(self) -> None:
         """developerTrace payload is deserialized into QueryResult."""
@@ -336,6 +359,7 @@ class TestQueryRun:
         snake_case = QueryOptions(query="test", query_depth="fast")
         camel_case = QueryOptions(query="test", queryDepth="deep")
         trace_alias = QueryOptions(query="test", includeDeveloperTrace=True)
+        deep_mode_alias = QueryOptions(query="test", debugScoutDeepMode="deep-heavy")
 
         assert snake_case.query_depth == "fast"
         assert camel_case.query_depth == "deep"
@@ -343,6 +367,11 @@ class TestQueryRun:
         assert trace_alias.include_developer_trace is True
         assert (
             trace_alias.model_dump(by_alias=True)["includeDeveloperTrace"] is True
+        )
+        assert deep_mode_alias.debug_scout_deep_mode == "deep-heavy"
+        assert (
+            deep_mode_alias.model_dump(by_alias=True)["debugScoutDeepMode"]
+            == "deep-heavy"
         )
 
     async def test_sends_idempotency_header_when_provided(self) -> None:
@@ -602,6 +631,7 @@ class TestQueryStream:
                 include_data_url=True,
                 include_developer_trace=True,
                 query_depth="deep",
+                debug_scout_deep_mode="deep-heavy",
             ):
                 events.append(event)
 
@@ -611,6 +641,7 @@ class TestQueryStream:
         assert call_kwargs[1]["json_body"]["includeDataUrl"] is True
         assert call_kwargs[1]["json_body"]["includeDeveloperTrace"] is True
         assert call_kwargs[1]["json_body"]["queryDepth"] == "deep"
+        assert call_kwargs[1]["json_body"]["debugScoutDeepMode"] == "deep-heavy"
 
     async def test_stream_handles_trace_events_and_aggregates_done_trace(self) -> None:
         """Trace events are emitted and merged into done.result.developer_trace."""
@@ -645,6 +676,28 @@ class TestQueryStream:
         assert done_trace.summary.completion_checks == 3
         assert done_trace.timeline is not None
         assert len(done_trace.timeline) == 2
+
+    async def test_stream_yields_structured_error_events(self) -> None:
+        """Structured stream error payloads are surfaced as typed events."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(MOCK_SSE_ERROR_LINES)
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream("test"):
+                events.append(event)
+
+        assert len(events) == 2
+        assert isinstance(events[0], QueryStreamToolStatusEvent)
+        assert isinstance(events[1], QueryStreamErrorEvent)
+        assert events[1].error == "Query failed before completion"
+        assert events[1].code == "query_failed"
+        assert events[1].scope == "query"
+        assert events[1].reason_code == "execution_failed"
 
     async def test_stream_builds_synthetic_done_trace_when_requested_and_missing(self) -> None:
         """When include_developer_trace is set, stream done result gets fallback trace if backend omits it."""

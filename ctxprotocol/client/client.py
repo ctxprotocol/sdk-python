@@ -160,13 +160,20 @@ class ContextClient:
         """
         max_retries = 3
         timeout_seconds = self._request_timeout_seconds
+        method_upper = method.upper()
+        headers = extra_headers or {}
+        can_retry_request = method_upper in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        } or "Idempotency-Key" in headers
         last_error: Exception | None = None
 
         for attempt in range(max_retries + 1):
             try:
-                if method == "GET":
+                if method_upper == "GET":
                     response = await self._client.get(endpoint, headers=extra_headers)
-                elif method == "POST":
+                elif method_upper == "POST":
                     response = await self._client.post(
                         endpoint,
                         json=json_body,
@@ -177,7 +184,11 @@ class ContextClient:
 
                 if not response.is_success:
                     # Retry transient 5xx errors
-                    if response.status_code >= 500 and attempt < max_retries:
+                    if (
+                        response.status_code >= 500
+                        and can_retry_request
+                        and attempt < max_retries
+                    ):
                         delay = min(2**attempt, 10)
                         await asyncio.sleep(delay)
                         continue
@@ -203,12 +214,18 @@ class ContextClient:
                         help_url=help_url,
                     )
 
-                return response.json()
+                try:
+                    return response.json()
+                except Exception as exc:
+                    raise ContextError(
+                        message=f"Failed to parse JSON response: {exc}",
+                        status_code=response.status_code,
+                    ) from exc
             except ContextError:
                 raise
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = exc
-                if attempt < max_retries:
+                if can_retry_request and attempt < max_retries:
                     delay = min(2**attempt, 10)
                     await asyncio.sleep(delay)
                     continue
@@ -251,13 +268,20 @@ class ContextClient:
         """
         max_retries = 3
         timeout_seconds = self._stream_timeout_seconds
+        method_upper = method.upper()
+        headers = extra_headers or {}
+        can_retry_request = method_upper in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        } or "Idempotency-Key" in headers
         last_error: Exception | None = None
 
         for attempt in range(max_retries + 1):
             try:
                 response = await self._stream_client.send(
                     self._stream_client.build_request(
-                        method,
+                        method_upper,
                         endpoint,
                         json=json_body,
                         headers=extra_headers,
@@ -269,7 +293,11 @@ class ContextClient:
                     # Read body before retrying/raising
                     await response.aread()
 
-                    if response.status_code >= 500 and attempt < max_retries:
+                    if (
+                        response.status_code >= 500
+                        and can_retry_request
+                        and attempt < max_retries
+                    ):
                         delay = min(2**attempt, 10)
                         await asyncio.sleep(delay)
                         continue
@@ -299,7 +327,7 @@ class ContextClient:
                 raise
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = exc
-                if attempt < max_retries:
+                if can_retry_request and attempt < max_retries:
                     delay = min(2**attempt, 10)
                     await asyncio.sleep(delay)
                     continue

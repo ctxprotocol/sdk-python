@@ -87,7 +87,7 @@ result = await client.tools.execute(
 print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you curated answers — the server handles answer-safe tool discovery, multi-tool orchestration (up to 100 MCP calls per response turn), self-healing retries, completeness checks, model-aware context budgeting, and AI synthesis for one flat fee:
+**Query mode** gives you curated answers — the server runs a discovery-first planner contract (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with model-aware context budgeting and AI synthesis for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
@@ -101,6 +101,12 @@ print(answer.tools_used)  # Which tools were used
 print(answer.cost)        # Cost breakdown
 print(answer.data_url)    # Optional blob URL with full data
 print(answer.developer_trace.summary if answer.developer_trace else None)
+print(
+    answer.developer_trace.diagnostics.selection
+    if answer.developer_trace and answer.developer_trace.diagnostics
+    else None
+)
+print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 ```
 
 > Mixed listings are first-class: one listing can expose methods to both surfaces. Methods without `_meta.pricing.executeUsd` remain query-only until priced.
@@ -239,14 +245,17 @@ closed = await client.tools.close_session("sess_123")
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, idempotency_key?)`
+#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
 
-Run an agentic query. The server discovers answer-safe tools, executes the full pipeline (up to 100 MCP calls per response turn), applies model-aware mediator/data budgeting, and returns an AI-synthesized answer.
+Run an agentic query. The server applies discovery-first orchestration (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with up to 100 MCP calls per response turn, then returns an AI-synthesized answer.
 
 `query_depth` controls orchestration depth:
 - `fast`: lower-latency path for simple lookups.
 - `auto`: server routes to either `fast` or `deep` from query intent + selected tool complexity.
 - `deep`: completeness-oriented path (default when omitted).
+
+`include_developer_trace` and `orchestration_metrics` are optional diagnostics.
+`debug_scout_deep_mode` remains test-only and should not be used in production flows.
 
 ```python
 # Simple string
@@ -270,11 +279,17 @@ print(answer.duration_ms)   # Total time
 print(answer.data)          # Optional execution data (when include_data=True)
 print(answer.data_url)      # Optional blob URL (when include_data_url=True)
 print(answer.developer_trace.summary if answer.developer_trace else None)
+print(
+    answer.developer_trace.diagnostics.selection
+    if answer.developer_trace and answer.developer_trace.diagnostics
+    else None
+)
+print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 ```
 
 When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
 
-#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, idempotency_key?)`
+#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
 
 Same as `run()` but streams events in real-time via SSE.
 
@@ -282,6 +297,7 @@ Event types:
 - `tool-status`
 - `text-delta`
 - `developer-trace` (when `include_developer_trace=True`)
+- `error`
 - `done`
 
 ```python
@@ -293,6 +309,8 @@ async for event in client.query.stream(
         print(f"Tool {event.tool.name}: {event.status}")
     elif event.type == "text-delta":
         print(event.delta, end="")
+    elif event.type == "error":
+        print(f"\nStream error: {event.error}")
     elif event.type == "done":
         print(f"\nTotal cost: {event.result.cost.total_cost_usd}")
 ```

@@ -564,14 +564,16 @@ class ExecuteSessionResult(BaseModel):
 
 
 QueryDepth = Literal["fast", "auto", "deep"]
+QueryDeepMode = Literal["deep-light", "deep-heavy"]
 
 
 class QueryOptions(BaseModel):
     """Options for the agentic query endpoint (pay-per-response).
 
     Unlike ``execute()`` which calls a single tool once, ``query()`` sends a
-    natural-language question and lets the server handle tool discovery,
-    multi-tool orchestration, self-healing retries, and AI synthesis.
+    natural-language question and lets the server handle discovery-first
+    orchestration (discover/probe -> plan-from-evidence -> execute ->
+    bounded fallback) and AI synthesis.
     One flat fee covers up to 100 MCP skill calls per tool.
 
     Attributes:
@@ -582,6 +584,7 @@ class QueryOptions(BaseModel):
         include_data_url: Persist execution data to blob and return URL
         include_developer_trace: Include machine-readable developer runtime traces
         query_depth: Query orchestration depth mode (fast, auto, or deep)
+        debug_scout_deep_mode: Test-only internal deep lane override
     """
 
     query: str = Field(..., description="The natural-language question to answer")
@@ -618,6 +621,14 @@ class QueryOptions(BaseModel):
         description=(
             "Query orchestration depth mode: fast (lower latency), "
             "auto (server-routed), or deep (completeness-oriented)"
+        ),
+    )
+    debug_scout_deep_mode: QueryDeepMode | None = Field(
+        default=None,
+        alias="debugScoutDeepMode",
+        description=(
+            "Development/testing only: force the server internal deep lane "
+            "(`deep-light` or `deep-heavy`)"
         ),
     )
     idempotency_key: str | None = Field(
@@ -691,6 +702,171 @@ class QueryDeveloperTraceLoopInfo(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
+class QueryDeveloperTraceToolSelection(BaseModel):
+    """Tool-selection metadata attached to discovery/planning diagnostics."""
+
+    tool_id: str | None = Field(default=None, alias="toolId")
+    tool_name: str | None = Field(default=None, alias="toolName")
+    selected_method_count: int | None = Field(default=None, alias="selectedMethodCount")
+    selected_methods: list[str] | None = Field(default=None, alias="selectedMethods")
+    omitted_selected_method_count: int | None = Field(
+        default=None,
+        alias="omittedSelectedMethodCount",
+    )
+    price_usd: str | None = Field(default=None, alias="priceUsd")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryPlanningTraceDiagnostic(BaseModel):
+    """Initial planner diagnostics for discovery-first planning."""
+
+    planner_query: str | None = Field(default=None, alias="plannerQuery")
+    scout_evidence_attached: bool | None = Field(default=None, alias="scoutEvidenceAttached")
+    scout_evidence_prompt_block: str | None = Field(
+        default=None,
+        alias="scoutEvidencePromptBlock",
+    )
+    allowed_modules: list[str] | None = Field(default=None, alias="allowedModules")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryRediscoveryTraceDiagnostic(BaseModel):
+    """Rediscovery/bounded-fallback diagnostics for query orchestration."""
+
+    considered: bool | None = None
+    executed: bool | None = None
+    skip_reason: str | None = Field(default=None, alias="skipReason")
+    missing_capability: str | None = Field(default=None, alias="missingCapability")
+    rediscovery_query: str | None = Field(default=None, alias="rediscoveryQuery")
+    capability_looks_like_search_need: bool | None = Field(
+        default=None,
+        alias="capabilityLooksLikeSearchNeed",
+    )
+    allow_search_fallback_on_elapsed_cap: bool | None = Field(
+        default=None,
+        alias="allowSearchFallbackOnElapsedCap",
+    )
+    search_fallback_used: bool | None = Field(default=None, alias="searchFallbackUsed")
+    pre_rediscovery_budget_reason_code: str | None = Field(
+        default=None,
+        alias="preRediscoveryBudgetReasonCode",
+    )
+    candidate_search_results: list[QueryDeveloperTraceToolSelection] | None = Field(
+        default=None,
+        alias="candidateSearchResults",
+    )
+    selected_alternatives: list[QueryDeveloperTraceToolSelection] | None = Field(
+        default=None,
+        alias="selectedAlternatives",
+    )
+    merged_tools: list[QueryDeveloperTraceToolSelection] | None = Field(
+        default=None,
+        alias="mergedTools",
+    )
+    using_paid_fallback: bool | None = Field(default=None, alias="usingPaidFallback")
+    branch_plan: QueryPlanningTraceDiagnostic | None = Field(
+        default=None,
+        alias="branchPlan",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceSelectionDiagnostics(BaseModel):
+    """Selection and lane diagnostics from scout planning."""
+
+    selected_depth: str | None = Field(default=None, alias="selectedDepth")
+    deep_mode: str | None = Field(default=None, alias="deepMode")
+    debug_scout_deep_mode: str | None = Field(default=None, alias="debugScoutDeepMode")
+    planner_reasoning_stage: str | None = Field(default=None, alias="plannerReasoningStage")
+    scout_enabled: bool | None = Field(default=None, alias="scoutEnabled")
+    preserve_fast_one_shot: bool | None = Field(default=None, alias="preserveFastOneShot")
+    candidate_method_count: int | None = Field(default=None, alias="candidateMethodCount")
+    scout_probe_status: str | None = Field(default=None, alias="scoutProbeStatus")
+    scout_probe_adequacy: str | None = Field(default=None, alias="scoutProbeAdequacy")
+    scout_probe_confidence: float | None = Field(default=None, alias="scoutProbeConfidence")
+    scout_metadata_confidence: float | None = Field(
+        default=None,
+        alias="scoutMetadataConfidence",
+    )
+    scout_probe_shortlisted_method_count: int | None = Field(
+        default=None,
+        alias="scoutProbeShortlistedMethodCount",
+    )
+    scout_probe_missing_capability: str | None = Field(
+        default=None,
+        alias="scoutProbeMissingCapability",
+    )
+    scout_evidence_attached_to_planning: bool | None = Field(
+        default=None,
+        alias="scoutEvidenceAttachedToPlanning",
+    )
+    selected_tools: list[QueryDeveloperTraceToolSelection] | None = Field(
+        default=None,
+        alias="selectedTools",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTracePlanningDiagnostics(BaseModel):
+    """Planning diagnostics payload."""
+
+    initial: QueryPlanningTraceDiagnostic | None = None
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceCostDiagnostics(BaseModel):
+    """Cost diagnostics payload."""
+
+    planning_cost_usd: float | None = Field(default=None, alias="planningCostUsd")
+    initial_execution_cost_usd: float | None = Field(
+        default=None,
+        alias="initialExecutionCostUsd",
+    )
+    rediscovery_additional_cost_usd: float | None = Field(
+        default=None,
+        alias="rediscoveryAdditionalCostUsd",
+    )
+    synthesis_cost_usd: float | None = Field(default=None, alias="synthesisCostUsd")
+    total_model_cost_usd: float | None = Field(default=None, alias="totalModelCostUsd")
+    tool_cost_usd: float | None = Field(default=None, alias="toolCostUsd")
+    total_charged_usd: float | None = Field(default=None, alias="totalChargedUsd")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceCompletenessDiagnostics(BaseModel):
+    """Completeness diagnostics payload."""
+
+    evaluations: list[dict[str, Any]] | None = None
+    trigger_needs_different_tools: bool | None = Field(
+        default=None,
+        alias="triggerNeedsDifferentTools",
+    )
+    trigger_missing_capability: str | None = Field(
+        default=None,
+        alias="triggerMissingCapability",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryDeveloperTraceDiagnostics(BaseModel):
+    """Rich developer-trace diagnostics for discovery-first planner internals."""
+
+    selection: QueryDeveloperTraceSelectionDiagnostics | None = None
+    planning: QueryDeveloperTracePlanningDiagnostics | None = None
+    cost: QueryDeveloperTraceCostDiagnostics | None = None
+    completeness: QueryDeveloperTraceCompletenessDiagnostics | None = None
+    rediscovery: QueryRediscoveryTraceDiagnostic | None = None
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
 class QueryDeveloperTraceStep(BaseModel):
     """Single timeline step in a query developer trace payload."""
 
@@ -727,8 +903,24 @@ class QueryDeveloperTrace(BaseModel):
 
     summary: QueryDeveloperTraceSummary | None = None
     timeline: list[QueryDeveloperTraceStep] | None = None
+    request_id: str | None = Field(default=None, alias="requestId")
+    query: str | None = None
+    source: str | None = None
+    diagnostics: QueryDeveloperTraceDiagnostics | None = None
 
     model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryOrchestrationMetrics(BaseModel):
+    """High-level orchestration outcome metrics returned by the query API."""
+
+    parity_stage: str = Field(..., alias="parityStage")
+    orchestration_mode: str = Field(..., alias="orchestrationMode")
+    first_pass_success: bool = Field(..., alias="firstPassSuccess")
+    capability_miss_signaled: bool = Field(..., alias="capabilityMissSignaled")
+    rediscovery_executed: bool = Field(..., alias="rediscoveryExecuted")
+
+    model_config = {"populate_by_name": True}
 
 
 class QueryResult(BaseModel):
@@ -742,6 +934,7 @@ class QueryResult(BaseModel):
         data: Optional execution data (when include_data is enabled)
         data_url: Optional blob URL for execution data (when include_data_url is enabled)
         developer_trace: Optional machine-readable Developer Mode trace
+        orchestration_metrics: Optional high-level first-pass/bounded-fallback metrics
     """
 
     response: str = Field(..., description="The AI-synthesized response text")
@@ -766,6 +959,11 @@ class QueryResult(BaseModel):
         alias="developerTrace",
         description="Optional machine-readable Developer Mode trace payload",
     )
+    orchestration_metrics: QueryOrchestrationMetrics | None = Field(
+        default=None,
+        alias="orchestrationMetrics",
+        description="Optional orchestration outcome metrics for rollout diagnostics",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -783,6 +981,10 @@ class QueryApiSuccessResponse(BaseModel):
     developer_trace: QueryDeveloperTrace | None = Field(
         default=None,
         alias="developerTrace",
+    )
+    orchestration_metrics: QueryOrchestrationMetrics | None = Field(
+        default=None,
+        alias="orchestrationMetrics",
     )
 
     model_config = {"populate_by_name": True}
@@ -817,11 +1019,24 @@ class QueryStreamDoneEvent(BaseModel):
     result: QueryResult
 
 
+class QueryStreamErrorEvent(BaseModel):
+    """Emitted when the server reports a structured query/stream error."""
+
+    type: Literal["error"]
+    error: str
+    code: ContextErrorCode | str | None = None
+    scope: str | None = None
+    reason_code: str | None = Field(default=None, alias="reasonCode")
+
+    model_config = {"populate_by_name": True}
+
+
 QueryStreamEvent = Union[
     QueryStreamToolStatusEvent,
     QueryStreamTextDeltaEvent,
     QueryStreamDeveloperTraceEvent,
     QueryStreamDoneEvent,
+    QueryStreamErrorEvent,
 ]
 
 

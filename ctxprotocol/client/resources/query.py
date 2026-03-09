@@ -3,8 +3,8 @@ Query resource for pay-per-response agentic queries.
 
 Unlike ``tools.execute()`` which calls a single tool once (pay-per-request),
 the Query resource sends a natural-language question and lets the server
-handle tool discovery, multi-tool orchestration, self-healing retries,
-completeness checks, and AI synthesis — all for one flat fee.
+handle discovery-first orchestration (discover/probe -> plan-from-evidence ->
+execute -> bounded fallback) and AI synthesis — all for one flat fee.
 """
 
 from __future__ import annotations
@@ -17,10 +17,12 @@ from ctxprotocol.client.types import (
     ExecuteApiErrorResponse,
     QueryApiSuccessResponse,
     QueryDeveloperTrace,
+    QueryDeepMode,
     QueryDepth,
     QueryResult,
     QueryStreamDeveloperTraceEvent,
     QueryStreamDoneEvent,
+    QueryStreamErrorEvent,
     QueryStreamEvent,
     QueryStreamTextDeltaEvent,
     QueryStreamToolStatusEvent,
@@ -196,12 +198,13 @@ class Query:
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
         query_depth: QueryDepth | None = None,
+        debug_scout_deep_mode: QueryDeepMode | None = None,
         idempotency_key: str | None = None,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
 
         The server discovers relevant tools (or uses the ones you specify),
-        executes the full agentic pipeline (up to 100 MCP calls per tool),
+        executes the discovery-first pipeline (up to 100 MCP calls per tool),
         and returns an AI-synthesized answer. Payment is settled after
         successful execution via deferred settlement.
 
@@ -213,6 +216,7 @@ class Query:
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
             query_depth: Query orchestration depth mode (fast, auto, or deep)
+            debug_scout_deep_mode: Test-only internal deep lane override
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
@@ -252,6 +256,8 @@ class Query:
             request_body["includeDeveloperTrace"] = include_developer_trace
         if query_depth is not None:
             request_body["queryDepth"] = query_depth
+        if debug_scout_deep_mode is not None:
+            request_body["debugScoutDeepMode"] = debug_scout_deep_mode
 
         response = await self._client.fetch(
             "/api/v1/query",
@@ -291,6 +297,7 @@ class Query:
                 data=success_response.data,
                 data_url=success_response.data_url,
                 developer_trace=developer_trace,
+                orchestration_metrics=success_response.orchestration_metrics,
             )
 
         raise ContextError("Unexpected response format from query API")
@@ -304,6 +311,7 @@ class Query:
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
         query_depth: QueryDepth | None = None,
+        debug_scout_deep_mode: QueryDeepMode | None = None,
         idempotency_key: str | None = None,
     ) -> AsyncGenerator[QueryStreamEvent, None]:
         """Run an agentic query with streaming via SSE.
@@ -312,6 +320,7 @@ class Query:
         - ``tool-status`` — A tool started executing or changed status
         - ``text-delta`` — A chunk of the AI response text
         - ``developer-trace`` — Runtime trace metadata (when enabled)
+        - ``error`` — A structured query/runtime error emitted before completion
         - ``done`` — The full response is complete (includes final QueryResult)
 
         Args:
@@ -322,6 +331,7 @@ class Query:
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
             query_depth: Query orchestration depth mode (fast, auto, or deep)
+            debug_scout_deep_mode: Test-only internal deep lane override
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Yields:
@@ -331,6 +341,8 @@ class Query:
             >>> async for event in client.query.stream("What are the top whale movements?"):
             ...     if event.type == "text-delta":
             ...         print(event.delta, end="")
+            ...     elif event.type == "error":
+            ...         print(f"\\nStream error: {event.error}")
             ...     elif event.type == "done":
             ...         print(f"\\nCost: {event.result.cost.total_cost_usd}")
         """
@@ -349,6 +361,8 @@ class Query:
             request_body["includeDeveloperTrace"] = include_developer_trace
         if query_depth is not None:
             request_body["queryDepth"] = query_depth
+        if debug_scout_deep_mode is not None:
+            request_body["debugScoutDeepMode"] = debug_scout_deep_mode
 
         response = await self._client.fetch_stream(
             "/api/v1/query",
@@ -400,6 +414,8 @@ class Query:
                     trace_event.trace,
                 )
                 yield trace_event
+            elif event_type == "error":
+                yield QueryStreamErrorEvent.model_validate(parsed)
             elif event_type == "done":
                 done_event = QueryStreamDoneEvent.model_validate(parsed)
                 done_trace = self._merge_developer_trace(
