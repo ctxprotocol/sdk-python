@@ -155,8 +155,8 @@ See a full dual-surface client script in [`examples/two-surfaces-client.py`](./e
 |--------|------|----------|---------|-------------|
 | `api_key` | `str` | Yes | — | Your Context Protocol API key |
 | `base_url` | `str` | No | `https://www.ctxprotocol.com` | API base URL (for development) |
-| `request_timeout_seconds` | `float` | No | `300.0` | Timeout for non-streaming API calls |
-| `stream_timeout_seconds` | `float` | No | `600.0` | Timeout for establishing streaming API calls |
+| `request_timeout_seconds` | `float` | No | `300.0` | Timeout for non-streaming JSON API calls |
+| `stream_timeout_seconds` | `float` | No | `600.0` | Timeout for streaming API calls; also used by `client.query.run()` |
 
 ```python
 # Production
@@ -248,6 +248,8 @@ closed = await client.tools.close_session("sess_123")
 #### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
 
 Run an agentic query. The server applies discovery-first orchestration (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with up to 100 MCP calls per response turn, then returns an AI-synthesized answer.
+
+`client.query.run()` buffers the same SSE transport used by `client.query.stream()` and returns the final `done` result. This keeps Python aligned with the TypeScript SDK and the live query runtime.
 
 `query_depth` controls orchestration depth:
 - `fast`: lower-latency path for simple lookups.

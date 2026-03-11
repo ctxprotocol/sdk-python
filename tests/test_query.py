@@ -77,6 +77,45 @@ MOCK_DEVELOPER_TRACE: dict[str, Any] = {
             "message": "Retrying after transient provider timeout",
         },
     ],
+    "diagnostics": {
+        "selection": {
+            "selectedDepth": "deep",
+            "deepMode": "deep-heavy",
+            "debugScoutDeepMode": "deep-heavy",
+            "plannerReasoningStage": "full",
+            "scoutEnabled": True,
+            "preserveFastOneShot": False,
+            "candidateMethodCount": 12,
+            "scoutProbeStatus": "ready",
+            "scoutProbeAdequacy": "limited",
+            "scoutProbeConfidence": 0.81,
+            "scoutMetadataConfidence": 0.74,
+            "scoutProbeShortlistedMethodCount": 2,
+            "scoutProbeMissingCapability": None,
+            "scoutPrePlanProbeCalls": 1,
+            "scoutPrePlanProbeBudgetReasonCode": None,
+            "scoutChangedInitialPlan": True,
+            "scoutChangedPlannerReasoningStage": True,
+            "scoutInitialSelectedDepth": "deep",
+            "scoutInitialDeepMode": "deep-light",
+            "scoutInitialPlannerReasoningStage": "focused",
+            "scoutInitialReasonCode": "metadata_quality_deep_light",
+            "scoutFinalReasonCode": "probe_detected_inadequacy",
+            "scoutEvidenceAttachedToPlanning": True,
+            "scoutLlmSelectionUsed": True,
+            "scoutLlmSelectionFallback": False,
+            "scoutLlmSelectionLatencyMs": 183.0,
+            "selectedTools": [
+                {
+                    "toolId": "tool-uuid-1",
+                    "toolName": "Whale Tracker",
+                    "selectedMethodCount": 2,
+                    "selectedMethods": ["get_whales", "get_whale_summary"],
+                    "omittedSelectedMethodCount": 1,
+                }
+            ],
+        }
+    },
 }
 
 MOCK_ORCHESTRATION_METRICS: dict[str, Any] = {
@@ -210,29 +249,47 @@ class _FakeStreamResponse:
         return {}
 
 
+def _make_done_stream_response(result: dict[str, Any]) -> _FakeStreamResponse:
+    """Wrap a query result in a minimal done-event SSE response."""
+    return _FakeStreamResponse(
+        [
+            "data: "
+            + json.dumps(
+                {
+                    "type": "done",
+                    "result": result,
+                }
+            ),
+            "data: [DONE]",
+        ]
+    )
+
+
 # ============================================================================
 # Tests: query.run()
 # ============================================================================
 
 
 class TestQueryRun:
-    """Tests for client.query.run() — non-streaming JSON queries."""
+    """Tests for client.query.run() — consumes SSE and returns the final result."""
 
     async def test_sends_correct_request_body_string(self) -> None:
-        """String shorthand sends query with stream: false."""
+        """String shorthand sends query with stream: true."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
             await client.query.run("What are the top whale movements?")
 
-        mock_fetch.assert_called_once_with(
+        mock_stream.assert_called_once_with(
             "/api/v1/query",
             method="POST",
             json_body={
                 "query": "What are the top whale movements?",
                 "tools": None,
-                "stream": False,
+                "stream": True,
             },
             extra_headers=None,
         )
@@ -241,20 +298,22 @@ class TestQueryRun:
         """Options dict with tools sends tool IDs."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
             await client.query.run(
                 query="Analyze whale activity",
                 tools=["tool-uuid-1", "tool-uuid-2"],
             )
 
-        mock_fetch.assert_called_once_with(
+        mock_stream.assert_called_once_with(
             "/api/v1/query",
             method="POST",
             json_body={
                 "query": "Analyze whale activity",
                 "tools": ["tool-uuid-1", "tool-uuid-2"],
-                "stream": False,
+                "stream": True,
             },
             extra_headers=None,
         )
@@ -271,8 +330,10 @@ class TestQueryRun:
             "orchestrationMetrics": MOCK_ORCHESTRATION_METRICS,
         }
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = success_with_data
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(success_with_data)
             result = await client.query.run(
                 query="Analyze whale activity",
                 model_id="glm-model",
@@ -283,13 +344,13 @@ class TestQueryRun:
                 debug_scout_deep_mode="deep-light",
             )
 
-        mock_fetch.assert_called_once_with(
+        mock_stream.assert_called_once_with(
             "/api/v1/query",
             method="POST",
             json_body={
                 "query": "Analyze whale activity",
                 "tools": None,
-                "stream": False,
+                "stream": True,
                 "modelId": "glm-model",
                 "includeData": True,
                 "includeDataUrl": True,
@@ -314,24 +375,41 @@ class TestQueryRun:
         """developerTrace payload is deserialized into QueryResult."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = {
-                **MOCK_SUCCESS_RESPONSE,
-                "developerTrace": MOCK_DEVELOPER_TRACE,
-            }
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(
+                {
+                    **MOCK_SUCCESS_RESPONSE,
+                    "developerTrace": MOCK_DEVELOPER_TRACE,
+                }
+            )
             result = await client.query.run("test query")
 
         assert result.developer_trace is not None
         assert result.developer_trace.summary is not None
         assert result.developer_trace.summary.retry_count == 2
         assert result.developer_trace.summary.tool_calls == 4
+        assert result.developer_trace.diagnostics is not None
+        assert result.developer_trace.diagnostics.selection is not None
+        selection = result.developer_trace.diagnostics.selection
+        assert selection.scout_pre_plan_probe_calls == 1
+        assert selection.scout_changed_initial_plan is True
+        assert selection.scout_initial_selected_depth == "deep"
+        assert selection.scout_initial_deep_mode == "deep-light"
+        assert selection.scout_initial_planner_reasoning_stage == "focused"
+        assert selection.scout_initial_reason_code == "metadata_quality_deep_light"
+        assert selection.scout_final_reason_code == "probe_detected_inadequacy"
+        assert selection.scout_llm_selection_used is True
 
     async def test_developer_trace_is_none_when_not_returned(self) -> None:
         """Query result keeps developer_trace unset when API omits it."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
             result = await client.query.run("test query")
 
         assert result.developer_trace is None
@@ -340,8 +418,10 @@ class TestQueryRun:
         """When include_developer_trace is set, SDK synthesizes fallback trace if API omits it."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
             result = await client.query.run(
                 query="test query",
                 include_developer_trace=True,
@@ -378,21 +458,23 @@ class TestQueryRun:
         """Explicit idempotency key is forwarded as request header."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
             await client.query.run(
                 query="Analyze whale activity",
                 tools=["tool-uuid-1"],
                 idempotency_key="7b31f437-61ed-4f76-8a6e-ed2f0766ffb8",
             )
 
-        mock_fetch.assert_called_once_with(
+        mock_stream.assert_called_once_with(
             "/api/v1/query",
             method="POST",
             json_body={
                 "query": "Analyze whale activity",
                 "tools": ["tool-uuid-1"],
-                "stream": False,
+                "stream": True,
             },
             extra_headers={"Idempotency-Key": "7b31f437-61ed-4f76-8a6e-ed2f0766ffb8"},
         )
@@ -401,8 +483,10 @@ class TestQueryRun:
         """Successful API response is deserialized into QueryResult."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_SUCCESS_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
             result = await client.query.run("test query")
 
         assert isinstance(result, QueryResult)
@@ -421,28 +505,47 @@ class TestQueryRun:
         assert result.cost.model_cost_usd == "0.005400"
         assert result.duration_ms == 4200
 
-    async def test_raises_context_error_on_insufficient_allowance(self) -> None:
-        """Error response raises ContextError with correct code."""
+    async def test_raises_if_run_stream_ends_before_done_event(self) -> None:
+        """Run raises when the stream ends without a done event."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = MOCK_ERROR_RESPONSE
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _FakeStreamResponse(["data: [DONE]"])
 
             with pytest.raises(ContextError) as exc_info:
                 await client.query.run("test query")
 
-        assert "Insufficient funds" in str(exc_info.value)
-        assert exc_info.value.code == "insufficient_allowance"
+        assert "Streaming query ended before done event" in str(exc_info.value)
+
+    async def test_raises_context_error_on_stream_error_event(self) -> None:
+        """Run raises the terminal SSE error when no done event arrives."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _FakeStreamResponse(MOCK_SSE_ERROR_LINES)
+
+            with pytest.raises(ContextError) as exc_info:
+                await client.query.run("test query")
+
+        assert "Query failed before completion" in str(exc_info.value)
+        assert exc_info.value.code == "query_failed"
 
     async def test_raises_context_error_on_no_wallet(self) -> None:
         """no_wallet error is propagated correctly."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = {
-                "error": "Account not fully set up.",
-                "code": "no_wallet",
-            }
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.side_effect = ContextError(
+                message="Account not fully set up.",
+                code="no_wallet",
+                status_code=400,
+            )
 
             with pytest.raises(ContextError) as exc_info:
                 await client.query.run("test query")
@@ -453,16 +556,38 @@ class TestQueryRun:
         """query_failed error is propagated correctly."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
-        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = {
-                "error": "Query failed: Tool execution timed out",
-                "code": "query_failed",
-            }
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.side_effect = ContextError(
+                message="Query failed: Tool execution timed out",
+                code="query_failed",
+                status_code=422,
+            )
 
             with pytest.raises(ContextError) as exc_info:
                 await client.query.run("test query")
 
         assert exc_info.value.code == "query_failed"
+
+    async def test_raises_context_error_on_insufficient_allowance(self) -> None:
+        """HTTP errors before stream setup still propagate correctly."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.side_effect = ContextError(
+                message="Insufficient funds. Set a spending cap in the dashboard.",
+                code="insufficient_allowance",
+                status_code=402,
+            )
+
+            with pytest.raises(ContextError) as exc_info:
+                await client.query.run("test query")
+
+        assert "Insufficient funds" in str(exc_info.value)
+        assert exc_info.value.code == "insufficient_allowance"
 
 
 # ============================================================================
@@ -676,6 +801,59 @@ class TestQueryStream:
         assert done_trace.summary.completion_checks == 3
         assert done_trace.timeline is not None
         assert len(done_trace.timeline) == 2
+
+    async def test_stream_accepts_non_dict_completeness_evaluations(self) -> None:
+        """Developer trace completeness diagnostics tolerate mixed evaluation payloads."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(
+            [
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "developer-trace",
+                        "trace": {
+                            "diagnostics": {
+                                "completeness": {
+                                    "evaluations": ["[OMITTED:CIRCULAR_REFERENCE]"],
+                                    "triggerNeedsDifferentTools": False,
+                                    "triggerMissingCapability": None,
+                                }
+                            }
+                        },
+                    }
+                ),
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "done",
+                        "result": MOCK_SUCCESS_RESPONSE,
+                    }
+                ),
+                "data: [DONE]",
+            ]
+        )
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream(
+                "test",
+                include_developer_trace=True,
+            ):
+                events.append(event)
+
+        done_events = [e for e in events if isinstance(e, QueryStreamDoneEvent)]
+        assert len(done_events) == 1
+        done_trace = done_events[0].result.developer_trace
+        assert done_trace is not None
+        assert done_trace.diagnostics is not None
+        assert done_trace.diagnostics.completeness is not None
+        assert done_trace.diagnostics.completeness.evaluations == [
+            "[OMITTED:CIRCULAR_REFERENCE]"
+        ]
 
     async def test_stream_yields_structured_error_events(self) -> None:
         """Structured stream error payloads are surfaced as typed events."""

@@ -17,8 +17,8 @@ class ContextClientOptions(BaseModel):
     Attributes:
         api_key: Your Context Protocol API key (e.g., "sk_live_abc123...")
         base_url: Base URL for the Context Protocol API. Defaults to "https://www.ctxprotocol.com"
-        request_timeout_seconds: Timeout for non-streaming requests in seconds
-        stream_timeout_seconds: Timeout for establishing streaming requests in seconds
+        request_timeout_seconds: Timeout for non-streaming JSON requests in seconds
+        stream_timeout_seconds: Timeout for streaming requests in seconds; also used by query.run()
     """
 
     api_key: str = Field(..., description="Your Context Protocol API key")
@@ -28,11 +28,11 @@ class ContextClientOptions(BaseModel):
     )
     request_timeout_seconds: float = Field(
         default=300.0,
-        description="Timeout for non-streaming requests in seconds",
+        description="Timeout for non-streaming JSON requests in seconds",
     )
     stream_timeout_seconds: float = Field(
         default=600.0,
-        description="Timeout for establishing streaming requests in seconds",
+        description="Timeout for streaming requests in seconds; also used by query.run()",
     )
 
 
@@ -799,9 +799,57 @@ class QueryDeveloperTraceSelectionDiagnostics(BaseModel):
         default=None,
         alias="scoutProbeMissingCapability",
     )
+    scout_pre_plan_probe_calls: int | None = Field(
+        default=None,
+        alias="scoutPrePlanProbeCalls",
+    )
+    scout_pre_plan_probe_budget_reason_code: str | None = Field(
+        default=None,
+        alias="scoutPrePlanProbeBudgetReasonCode",
+    )
+    scout_changed_initial_plan: bool | None = Field(
+        default=None,
+        alias="scoutChangedInitialPlan",
+    )
+    scout_changed_planner_reasoning_stage: bool | None = Field(
+        default=None,
+        alias="scoutChangedPlannerReasoningStage",
+    )
+    scout_initial_selected_depth: str | None = Field(
+        default=None,
+        alias="scoutInitialSelectedDepth",
+    )
+    scout_initial_deep_mode: str | None = Field(
+        default=None,
+        alias="scoutInitialDeepMode",
+    )
+    scout_initial_planner_reasoning_stage: str | None = Field(
+        default=None,
+        alias="scoutInitialPlannerReasoningStage",
+    )
+    scout_initial_reason_code: str | None = Field(
+        default=None,
+        alias="scoutInitialReasonCode",
+    )
+    scout_final_reason_code: str | None = Field(
+        default=None,
+        alias="scoutFinalReasonCode",
+    )
     scout_evidence_attached_to_planning: bool | None = Field(
         default=None,
         alias="scoutEvidenceAttachedToPlanning",
+    )
+    scout_llm_selection_used: bool | None = Field(
+        default=None,
+        alias="scoutLlmSelectionUsed",
+    )
+    scout_llm_selection_fallback: bool | None = Field(
+        default=None,
+        alias="scoutLlmSelectionFallback",
+    )
+    scout_llm_selection_latency_ms: float | None = Field(
+        default=None,
+        alias="scoutLlmSelectionLatencyMs",
     )
     selected_tools: list[QueryDeveloperTraceToolSelection] | None = Field(
         default=None,
@@ -842,7 +890,7 @@ class QueryDeveloperTraceCostDiagnostics(BaseModel):
 class QueryDeveloperTraceCompletenessDiagnostics(BaseModel):
     """Completeness diagnostics payload."""
 
-    evaluations: list[dict[str, Any]] | None = None
+    evaluations: list[Any] | None = None
     trigger_needs_different_tools: bool | None = Field(
         default=None,
         alias="triggerNeedsDifferentTools",

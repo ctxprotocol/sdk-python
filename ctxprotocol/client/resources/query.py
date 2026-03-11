@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from ctxprotocol.client.types import (
     ContextError,
-    ExecuteApiErrorResponse,
-    QueryApiSuccessResponse,
     QueryDeveloperTrace,
     QueryDeepMode,
     QueryDepth,
@@ -207,6 +205,8 @@ class Query:
         executes the discovery-first pipeline (up to 100 MCP calls per tool),
         and returns an AI-synthesized answer. Payment is settled after
         successful execution via deferred settlement.
+        Internally this follows the same SSE `done` path as `query.stream()`
+        so Python and TypeScript observe the same query runtime behavior.
 
         Args:
             query: The natural-language question to answer
@@ -241,66 +241,33 @@ class Query:
             ...     tools=["tool-uuid-1", "tool-uuid-2"],
             ... )
         """
-        request_body: dict[str, Any] = {
-            "query": query,
-            "tools": tools,
-            "stream": False,
-        }
-        if model_id is not None:
-            request_body["modelId"] = model_id
-        if include_data is not None:
-            request_body["includeData"] = include_data
-        if include_data_url is not None:
-            request_body["includeDataUrl"] = include_data_url
-        if include_developer_trace is not None:
-            request_body["includeDeveloperTrace"] = include_developer_trace
-        if query_depth is not None:
-            request_body["queryDepth"] = query_depth
-        if debug_scout_deep_mode is not None:
-            request_body["debugScoutDeepMode"] = debug_scout_deep_mode
+        terminal_error: QueryStreamErrorEvent | None = None
 
-        response = await self._client.fetch(
-            "/api/v1/query",
-            method="POST",
-            json_body=request_body,
-            extra_headers=(
-                {"Idempotency-Key": idempotency_key}
-                if idempotency_key
-                else None
-            ),
-        )
+        async for event in self.stream(
+            query=query,
+            tools=tools,
+            model_id=model_id,
+            include_data=include_data,
+            include_data_url=include_data_url,
+            include_developer_trace=include_developer_trace,
+            query_depth=query_depth,
+            debug_scout_deep_mode=debug_scout_deep_mode,
+            idempotency_key=idempotency_key,
+        ):
+            if event.type == "error":
+                terminal_error = event
+                continue
 
-        # Handle error response
-        if "error" in response:
-            error_response = ExecuteApiErrorResponse.model_validate(response)
+            if event.type == "done":
+                return event.result
+
+        if terminal_error is not None:
             raise ContextError(
-                message=error_response.error,
-                code=error_response.code,
-                status_code=None,
-                help_url=error_response.help_url,
+                message=terminal_error.error,
+                code=terminal_error.code,
             )
 
-        # Handle success response
-        if response.get("success"):
-            success_response = QueryApiSuccessResponse.model_validate(response)
-            developer_trace = success_response.developer_trace
-            if include_developer_trace and developer_trace is None:
-                developer_trace = self._build_synthetic_trace_from_run_result(
-                    success_response.tools_used,
-                    success_response.duration_ms,
-                )
-            return QueryResult(
-                response=success_response.response,
-                tools_used=success_response.tools_used,
-                cost=success_response.cost,
-                duration_ms=success_response.duration_ms,
-                data=success_response.data,
-                data_url=success_response.data_url,
-                developer_trace=developer_trace,
-                orchestration_metrics=success_response.orchestration_metrics,
-            )
-
-        raise ContextError("Unexpected response format from query API")
+        raise ContextError("Streaming query ended before done event")
 
     async def stream(
         self,
@@ -423,10 +390,16 @@ class Query:
                     done_event.result.developer_trace,
                 )
                 if done_trace is None and include_developer_trace:
-                    done_trace = self._build_synthetic_trace_from_stream_status(
-                        status_timeline=status_timeline,
-                        tools_used=done_event.result.tools_used,
-                        duration_ms=done_event.result.duration_ms,
-                    )
+                    if status_timeline:
+                        done_trace = self._build_synthetic_trace_from_stream_status(
+                            status_timeline=status_timeline,
+                            tools_used=done_event.result.tools_used,
+                            duration_ms=done_event.result.duration_ms,
+                        )
+                    else:
+                        done_trace = self._build_synthetic_trace_from_run_result(
+                            done_event.result.tools_used,
+                            done_event.result.duration_ms,
+                        )
                 done_event.result.developer_trace = done_trace
                 yield done_event

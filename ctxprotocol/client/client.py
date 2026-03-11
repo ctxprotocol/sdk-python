@@ -53,8 +53,9 @@ class ContextClient:
         Args:
             api_key: Your Context Protocol API key (format: sk_live_...)
             base_url: Optional base URL override (defaults to https://www.ctxprotocol.com)
-            request_timeout_seconds: Timeout for non-streaming requests (default 300.0s)
-            stream_timeout_seconds: Timeout for establishing streaming requests (default 600.0s)
+            request_timeout_seconds: Timeout for non-streaming JSON requests (default 300.0s)
+            stream_timeout_seconds: Timeout for streaming requests (default 600.0s);
+                also used by query.run(), which follows the SSE done path for parity
 
         Raises:
             ContextError: If API key is not provided or timeout values are invalid
