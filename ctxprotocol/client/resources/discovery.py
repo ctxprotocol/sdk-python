@@ -23,6 +23,11 @@ class Discovery:
         """
         self._client = client
 
+    async def get(self, tool_id: str) -> Tool:
+        """Fetch a single marketplace tool by its unique ID."""
+        response = await self._client.fetch(f"/api/v1/tools/{tool_id}")
+        return Tool.model_validate(response)
+
     async def search(
         self,
         query: str,

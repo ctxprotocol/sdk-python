@@ -29,6 +29,25 @@ async def test_search_legacy_signature() -> None:
     await client.close()
 
 
+async def test_get_tool_by_id() -> None:
+    client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+    with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = {
+            "id": "abc-123",
+            "name": "Test Tool",
+            "description": "A tool",
+            "price": "0.01",
+        }
+        tool = await client.discovery.get("abc-123")
+
+    endpoint = mock_fetch.call_args[0][0]
+    assert endpoint == "/api/v1/tools/abc-123"
+    assert tool.id == "abc-123"
+    assert tool.name == "Test Tool"
+    await client.close()
+
+
 async def test_search_forwards_surface_filters() -> None:
     client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
 
