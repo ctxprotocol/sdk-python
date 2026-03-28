@@ -87,16 +87,19 @@ result = await client.tools.execute(
 print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you curated answers — the server runs a discovery-first planner contract (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with model-aware context budgeting and AI synthesis for one flat fee:
+**Query mode** gives you a managed librarian contract — the server runs a discovery-first planner contract (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with model-aware context budgeting and can return plain answers or structured evidence packages for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
-    model_id="glm-model",      # optional: choose a supported model
+    answer_model_id="glm-model",  # optional: choose the final synthesis model
+    response_shape="answer_with_evidence",  # optional: answer | answer_with_evidence | evidence_only
     query_depth="deep",        # optional: fast | auto | deep
     include_data_url=True,     # optional: persist full execution data to blob
     include_developer_trace=True,  # optional: include runtime developer trace
 )
-print(answer.response)    # AI-synthesized answer
+print(answer.response)    # response text or summary
+print(answer.summary)     # short machine-friendly summary
+print(answer.evidence)    # structured evidence package
 print(answer.tools_used)  # Which tools were used
 print(answer.cost)        # Cost breakdown
 print(answer.data_url)    # Optional blob URL with full data
@@ -114,6 +117,14 @@ print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 > Compatibility: SDK/API payload fields such as `price` and `price_per_query` are retained for backward compatibility. In Query mode, they represent listing-level **price per response turn**.
 > A future major release can add response-named aliases (for example, `price_per_response`) before deprecating legacy names.
 
+`response_shape` options:
+
+- `answer`: backward-compatible prose answer
+- `answer_with_evidence`: prose plus `summary`, `evidence`, `artifacts`, `freshness`, `confidence`, and `usage`
+- `evidence_only`: machine-friendly summary plus the same evidence package for downstream agents
+
+The first-party chat app uses the same Query contract and defaults to `answer_with_evidence`.
+
 ## Quick Start
 
 ```python
@@ -122,8 +133,11 @@ from ctxprotocol import ContextClient
 
 async def main():
     async with ContextClient(api_key="sk_live_...") as client:
-        # Pay-per-response: Ask a question, get a curated answer
-        answer = await client.query.run("What are the top whale movements on Base?")
+        # Pay-per-response: Ask a question, get a managed answer package
+        answer = await client.query.run(
+            query="What are the top whale movements on Base?",
+            response_shape="answer_with_evidence",
+        )
         print(answer.response)
 
         # Execute surface: require explicit execute pricing
@@ -245,9 +259,9 @@ closed = await client.tools.close_session("sess_123")
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
+#### `client.query.run(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
 
-Run an agentic query. The server applies discovery-first orchestration (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with up to 100 MCP calls per response turn, then returns an AI-synthesized answer.
+Run an agentic query. The server applies discovery-first orchestration (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer`, `answer_with_evidence`, or `evidence_only`).
 
 `client.query.run()` buffers the same SSE transport used by `client.query.stream()` and returns the final `done` result. This keeps Python aligned with the TypeScript SDK and the live query runtime.
 
@@ -267,14 +281,14 @@ answer = await client.query.run("What are the top whale movements on Base?")
 answer = await client.query.run(
     query="Analyze whale activity on Base",
     tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
-    model_id="kimi-model-thinking",          # optional
+    answer_model_id="kimi-model-thinking",   # optional final synthesis model
     query_depth="auto",                      # optional: fast | auto | deep
     include_data=True,                       # optional: include execution data inline
     include_data_url=True,                   # optional: include blob URL for full data
     include_developer_trace=True,            # optional: include Developer Mode trace
 )
 
-print(answer.response)      # AI-synthesized text
+print(answer.response)      # response text or summary
 print(answer.tools_used)    # [QueryToolUsage(id, name, skill_calls)]
 print(answer.cost)          # QueryCost(model_cost_usd, tool_cost_usd, total_cost_usd)
 print(answer.duration_ms)   # Total time
@@ -291,7 +305,7 @@ print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 
 When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
 
-#### `client.query.stream(query, tools?, model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
+#### `client.query.stream(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
 
 Same as `run()` but streams events in real-time via SSE.
 

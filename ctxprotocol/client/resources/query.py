@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from ctxprotocol.client.types import (
     ContextError,
+    QueryClarificationPolicy,
     QueryDeveloperTrace,
     QueryDeepMode,
     QueryDepth,
+    QueryResponseShape,
     QueryResult,
     QueryStreamDeveloperTraceEvent,
     QueryStreamDoneEvent,
@@ -187,11 +189,59 @@ class Query:
             }
         )
 
+    @staticmethod
+    def _build_policy_error_event(
+        result: QueryResult,
+        clarification_policy: QueryClarificationPolicy | None,
+    ) -> QueryStreamErrorEvent | None:
+        if clarification_policy != "error":
+            return None
+
+        if (
+            result.outcome_type == "clarification_required"
+            and result.clarification is not None
+        ):
+            return QueryStreamErrorEvent.model_validate(
+                {
+                    "type": "error",
+                    "error": result.response,
+                    "code": "clarification_required",
+                    "reasonCode": "clarification_required",
+                    "outcomeType": "clarification_required",
+                    "clarification": result.clarification.model_dump(
+                        by_alias=True,
+                        exclude_none=True,
+                    ),
+                }
+            )
+
+        if (
+            result.outcome_type == "capability_miss"
+            and result.capability_miss is not None
+        ):
+            return QueryStreamErrorEvent.model_validate(
+                {
+                    "type": "error",
+                    "error": result.response,
+                    "code": "capability_miss",
+                    "reasonCode": "capability_miss",
+                    "outcomeType": "capability_miss",
+                    "capabilityMiss": result.capability_miss.model_dump(
+                        by_alias=True,
+                        exclude_none=True,
+                    ),
+                }
+            )
+
+        return None
+
     async def run(
         self,
         query: str,
+        clarification_policy: QueryClarificationPolicy | None = None,
         tools: list[str] | None = None,
-        model_id: str | None = None,
+        answer_model_id: str | None = None,
+        response_shape: QueryResponseShape | None = None,
         include_data: bool | None = None,
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
@@ -211,7 +261,8 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
-            model_id: Optional model ID for query orchestration/synthesis
+            answer_model_id: Optional answer model ID for final synthesis
+            response_shape: Structured response mode for query answers
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
@@ -245,8 +296,10 @@ class Query:
 
         async for event in self.stream(
             query=query,
+            clarification_policy=clarification_policy,
             tools=tools,
-            model_id=model_id,
+            answer_model_id=answer_model_id,
+            response_shape=response_shape,
             include_data=include_data,
             include_data_url=include_data_url,
             include_developer_trace=include_developer_trace,
@@ -272,8 +325,10 @@ class Query:
     async def stream(
         self,
         query: str,
+        clarification_policy: QueryClarificationPolicy | None = None,
         tools: list[str] | None = None,
-        model_id: str | None = None,
+        answer_model_id: str | None = None,
+        response_shape: QueryResponseShape | None = None,
         include_data: bool | None = None,
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
@@ -293,7 +348,8 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
-            model_id: Optional model ID for query orchestration/synthesis
+            answer_model_id: Optional answer model ID for final synthesis
+            response_shape: Structured response mode for query answers
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
@@ -318,8 +374,12 @@ class Query:
             "tools": tools,
             "stream": True,
         }
-        if model_id is not None:
-            request_body["modelId"] = model_id
+        if clarification_policy is not None:
+            request_body["clarificationPolicy"] = clarification_policy
+        if answer_model_id is not None:
+            request_body["answerModelId"] = answer_model_id
+        if response_shape is not None:
+            request_body["responseShape"] = response_shape
         if include_data is not None:
             request_body["includeData"] = include_data
         if include_data_url is not None:
@@ -402,4 +462,11 @@ class Query:
                             done_event.result.duration_ms,
                         )
                 done_event.result.developer_trace = done_trace
-                yield done_event
+                policy_error_event = self._build_policy_error_event(
+                    done_event.result,
+                    clarification_policy,
+                )
+                if policy_error_event is not None:
+                    yield policy_error_event
+                else:
+                    yield done_event
