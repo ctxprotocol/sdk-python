@@ -48,4 +48,6 @@ htmlcov/
 # Shell scripts (deployment)
 *.sh
 
-
+# Generated MCP contributor pipeline artifacts (mirror TypeScript SDK examples)
+examples/**/research-loop*.json
+examples/**/marketplace-validation-artifact.json
