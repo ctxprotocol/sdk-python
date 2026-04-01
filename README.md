@@ -120,8 +120,10 @@ print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 `response_shape` options:
 
 - `answer`: backward-compatible prose answer
-- `answer_with_evidence`: prose plus `summary`, `evidence`, `artifacts`, `freshness`, `confidence`, and `usage`
+- `answer_with_evidence`: prose plus `summary`, `evidence`, `artifacts`, `freshness`, `confidence`, `usage`, `outcome`, and `controller`
 - `evidence_only`: machine-friendly summary plus the same evidence package for downstream agents
+
+Premium wedge answers can also expose `evidence.market_intelligence`, `view.rows`, `view.columns`, and the top-level controller fields `stop_reason`, `issue_class`, and `actions_taken`.
 
 The first-party chat app uses the same Query contract and defaults to `answer_with_evidence`.
 

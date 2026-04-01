@@ -1228,6 +1228,151 @@ class QueryResponseEnvelopeSourceRef(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+QueryResponseEnvelopeTone = Literal["positive", "negative", "neutral", "caution"]
+QueryControllerStopReason = Literal[
+    "complete_answer",
+    "bounded_runtime_budget",
+    "bounded_same_endpoint_guardrail",
+    "bounded_upstream_abort_guardrail",
+    "clarification_required",
+    "capability_miss",
+]
+QueryControllerIssueClass = Literal[
+    "scope_ambiguity",
+    "missing_evidence",
+    "missing_capability",
+    "stale_data",
+    "wrong_tool_path",
+]
+QueryControllerAction = Literal[
+    "inspect_current_grounding",
+    "patch_current_program",
+    "bounded_rediscovery",
+    "clarify_scope",
+    "return_capability_miss",
+    "return_bounded_answer",
+    "return_complete_answer",
+]
+
+
+class QueryResponseEnvelopeMarketAggregateFlow(BaseModel):
+    net_flow_usd: float | None = Field(default=None, alias="netFlowUsd")
+    gross_inflow_usd: float | None = Field(default=None, alias="grossInflowUsd")
+    gross_outflow_usd: float | None = Field(default=None, alias="grossOutflowUsd")
+    native_net_flow: float | None = Field(default=None, alias="nativeNetFlow")
+    native_unit: str | None = Field(default=None, alias="nativeUnit")
+    direction: Literal["inflow", "outflow", "flat", "mixed"]
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeMarketVenueBreakdown(BaseModel):
+    venue: str
+    asset: str | None = None
+    net_flow_usd: float | None = Field(default=None, alias="netFlowUsd")
+    gross_inflow_usd: float | None = Field(default=None, alias="grossInflowUsd")
+    gross_outflow_usd: float | None = Field(default=None, alias="grossOutflowUsd")
+    native_net_flow: float | None = Field(default=None, alias="nativeNetFlow")
+    native_unit: str | None = Field(default=None, alias="nativeUnit")
+    share_of_total: float | None = Field(default=None, alias="shareOfTotal")
+    rank: int | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeCatalystRef(BaseModel):
+    source: str
+    published_at: str | None = Field(default=None, alias="publishedAt")
+    claim: str | None = None
+    relation_to_flow: str | None = Field(default=None, alias="relationToFlow")
+    url: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeDerivativesContext(BaseModel):
+    open_interest_direction: str | None = Field(
+        default=None, alias="openInterestDirection"
+    )
+    open_interest_change_pct: float | None = Field(
+        default=None, alias="openInterestChangePct"
+    )
+    liquidation_bias: str | None = Field(default=None, alias="liquidationBias")
+    venues: list[str] = Field(default_factory=list)
+    relationship_to_spot_flows: str | None = Field(
+        default=None, alias="relationshipToSpotFlows"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeMarketIntelligence(BaseModel):
+    asset: str | None = None
+    assets: list[str] | None = None
+    time_window: str | None = Field(default=None, alias="timeWindow")
+    as_of: str | None = Field(default=None, alias="asOf")
+    aggregate_flow: QueryResponseEnvelopeMarketAggregateFlow | None = Field(
+        default=None, alias="aggregateFlow"
+    )
+    venue_breakdown: list[QueryResponseEnvelopeMarketVenueBreakdown] = Field(
+        default_factory=list,
+        alias="venueBreakdown",
+    )
+    catalyst_refs: list[QueryResponseEnvelopeCatalystRef] = Field(
+        default_factory=list,
+        alias="catalystRefs",
+    )
+    derivatives_context: QueryResponseEnvelopeDerivativesContext | None = Field(
+        default=None,
+        alias="derivativesContext",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeViewMetric(BaseModel):
+    label: str
+    value: str
+    tone: QueryResponseEnvelopeTone | None = None
+
+
+class QueryResponseEnvelopeViewRow(BaseModel):
+    key: str
+    cells: list[str]
+    tone: QueryResponseEnvelopeTone | None = None
+    source_ref_ids: list[str] | None = Field(default=None, alias="sourceRefIds")
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeOutcome(BaseModel):
+    label: str
+    tone: QueryResponseEnvelopeTone
+    stop_reason: QueryControllerStopReason = Field(..., alias="stopReason")
+    issue_class: QueryControllerIssueClass | None = Field(
+        default=None,
+        alias="issueClass",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryResponseEnvelopeController(BaseModel):
+    scope: Literal["wedge", "standard"]
+    next_action: QueryControllerAction = Field(..., alias="nextAction")
+    actions_taken: list[QueryControllerAction] = Field(..., alias="actionsTaken")
+    patch_first_program_preserved: bool = Field(
+        ..., alias="patchFirstProgramPreserved"
+    )
+    execution_program_revision_id: str | None = Field(
+        default=None,
+        alias="executionProgramRevisionId",
+    )
+    hard_budget_applied: bool = Field(..., alias="hardBudgetApplied")
+
+    model_config = {"populate_by_name": True}
+
+
 class QueryResponseEnvelopeCanonicalDataRef(BaseModel):
     """Canonical dataset metadata for a structured query answer."""
 
@@ -1252,6 +1397,10 @@ class QueryResponseEnvelopeEvidence(BaseModel):
     retrieval_plan_reason_codes: list[str] = Field(
         default_factory=list,
         alias="retrievalPlanReasonCodes",
+    )
+    market_intelligence: QueryResponseEnvelopeMarketIntelligence | None = Field(
+        default=None,
+        alias="marketIntelligence",
     )
 
     model_config = {"populate_by_name": True}
@@ -1278,6 +1427,10 @@ class QueryResponseEnvelopeView(BaseModel):
 
     type: QueryResponseEnvelopeViewType
     label: str
+    title: str | None = None
+    metrics: list[QueryResponseEnvelopeViewMetric] | None = None
+    columns: list[str] | None = None
+    rows: list[QueryResponseEnvelopeViewRow] | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -1382,6 +1535,14 @@ class QueryResult(BaseModel):
         alias="responseShape",
         description="Structured response mode returned by the query API",
     )
+    outcome: QueryResponseEnvelopeOutcome | None = Field(
+        default=None,
+        description="Public outcome label and stop reason for structured query answers",
+    )
+    controller: QueryResponseEnvelopeController | None = Field(
+        default=None,
+        description="Public bounded-controller summary for structured query answers",
+    )
     summary: str | None = Field(
         default=None,
         description="Machine-friendly summary attached to structured query responses",
@@ -1429,6 +1590,21 @@ class QueryResult(BaseModel):
         alias="assumptionMade",
         description="Auto-resolution metadata when the server proceeded with an assumption",
     )
+    stop_reason: QueryControllerStopReason | None = Field(
+        default=None,
+        alias="stopReason",
+        description="Typed stop reason for the final outcome",
+    )
+    issue_class: QueryControllerIssueClass | None = Field(
+        default=None,
+        alias="issueClass",
+        description="Typed controller issue class for the final outcome",
+    )
+    actions_taken: list[QueryControllerAction] | None = Field(
+        default=None,
+        alias="actionsTaken",
+        description="Ordered public controller actions taken before the final outcome",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -1455,6 +1631,8 @@ class QueryApiSuccessResponse(BaseModel):
         default=None,
         alias="responseShape",
     )
+    outcome: QueryResponseEnvelopeOutcome | None = None
+    controller: QueryResponseEnvelopeController | None = None
     summary: str | None = None
     evidence: QueryResponseEnvelopeEvidence | None = None
     artifacts: QueryResponseEnvelopeArtifacts | None = None
@@ -1471,6 +1649,18 @@ class QueryApiSuccessResponse(BaseModel):
     assumption_made: QueryAssumptionMetadata | None = Field(
         default=None,
         alias="assumptionMade",
+    )
+    stop_reason: QueryControllerStopReason | None = Field(
+        default=None,
+        alias="stopReason",
+    )
+    issue_class: QueryControllerIssueClass | None = Field(
+        default=None,
+        alias="issueClass",
+    )
+    actions_taken: list[QueryControllerAction] | None = Field(
+        default=None,
+        alias="actionsTaken",
     )
 
     model_config = {"populate_by_name": True}
