@@ -13,21 +13,16 @@ if TYPE_CHECKING:
     from ctxprotocol.client.client import ContextClient
 
 ToolCategory = Literal[
-    "crypto",
-    "defi",
-    "nft",
-    "finance",
-    "data",
-    "social",
-    "gaming",
-    "ai",
-    "infrastructure",
-    "analytics",
-    "news",
-    "sports",
-    "weather",
-    "ecommerce",
-    "other",
+    "Crypto & DeFi",
+    "Financial Markets",
+    "Business & Sales",
+    "Marketing & SEO",
+    "Legal & Regulatory",
+    "Real World",
+    "Developer Tools",
+    "Research & Academia",
+    "Utility",
+    "Other",
 ]
 
 ALLOWED_TOOL_CATEGORIES: tuple[str, ...] = get_args(ToolCategory)
