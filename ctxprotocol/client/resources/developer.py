@@ -4,13 +4,33 @@ Developer resource for managing tool listings on the Context Protocol marketplac
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 from urllib.parse import quote
 
 from ctxprotocol.client.types import ContextError
 
 if TYPE_CHECKING:
     from ctxprotocol.client.client import ContextClient
+
+ToolCategory = Literal[
+    "crypto",
+    "defi",
+    "nft",
+    "finance",
+    "data",
+    "social",
+    "gaming",
+    "ai",
+    "infrastructure",
+    "analytics",
+    "news",
+    "sports",
+    "weather",
+    "ecommerce",
+    "other",
+]
+
+ALLOWED_TOOL_CATEGORIES: tuple[str, ...] = get_args(ToolCategory)
 
 
 class Developer:
@@ -29,7 +49,7 @@ class Developer:
         *,
         name: str | None = None,
         description: str | None = None,
-        category: str | None = None,
+        category: ToolCategory | None = None,
     ) -> dict[str, Any]:
         """Update a tool listing's metadata.
 
@@ -39,13 +59,14 @@ class Developer:
             tool_id: The UUID of the tool to update.
             name: New display name for the tool.
             description: New marketplace description.
-            category: New category (e.g. "crypto", "finance", "data").
+            category: Must be one of the predefined marketplace categories.
 
         Returns:
             Dict with updated tool fields (id, name, description, category, updatedAt).
 
         Raises:
-            ContextError: If authentication fails or the caller does not own the tool.
+            ContextError: If authentication fails, the caller does not own the tool,
+                or the category is not in the allowed list.
 
         Example:
             >>> updated = await client.developer.update_tool(
@@ -64,6 +85,10 @@ class Developer:
         if description is not None:
             payload["description"] = description
         if category is not None:
+            if category not in ALLOWED_TOOL_CATEGORIES:
+                raise ContextError(
+                    f"category must be one of: {', '.join(ALLOWED_TOOL_CATEGORIES)}"
+                )
             payload["category"] = category
 
         if not payload:
