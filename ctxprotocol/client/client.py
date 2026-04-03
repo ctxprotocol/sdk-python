@@ -83,11 +83,13 @@ class ContextClient:
         self._stream_http_client: httpx.AsyncClient | None = None
 
         # Import here to avoid circular imports
+        from ctxprotocol.client.resources.developer import Developer
         from ctxprotocol.client.resources.discovery import Discovery
         from ctxprotocol.client.resources.query import Query
         from ctxprotocol.client.resources.tools import Tools
 
         # Initialize resources
+        self.developer = Developer(self)
         self.discovery = Discovery(self)
         self.tools = Tools(self)
         self.query = Query(self)
@@ -176,6 +178,12 @@ class ContextClient:
                     response = await self._client.get(endpoint, headers=extra_headers)
                 elif method_upper == "POST":
                     response = await self._client.post(
+                        endpoint,
+                        json=json_body,
+                        headers=extra_headers,
+                    )
+                elif method_upper == "PATCH":
+                    response = await self._client.patch(
                         endpoint,
                         json=json_body,
                         headers=extra_headers,

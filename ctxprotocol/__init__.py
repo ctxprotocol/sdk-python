@@ -37,6 +37,7 @@ __version__ = "0.10.0"
 from ctxprotocol.client import (
     ContextClient,
     ContextError,
+    Developer,
     Discovery,
     Query,
     Tools,
@@ -154,6 +155,7 @@ __all__ = [
     "__version__",
     # Client
     "ContextClient",
+    "Developer",
     "Discovery",
     "Tools",
     "Query",

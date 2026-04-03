@@ -5,6 +5,7 @@ Client module for AI Agents to query marketplace and execute tools.
 """
 
 from ctxprotocol.client.client import ContextClient
+from ctxprotocol.client.resources.developer import Developer
 from ctxprotocol.client.resources.discovery import Discovery
 from ctxprotocol.client.resources.query import Query
 from ctxprotocol.client.resources.tools import Tools
@@ -57,6 +58,7 @@ __all__ = [
     # Main client
     "ContextClient",
     # Resources
+    "Developer",
     "Discovery",
     "Tools",
     "Query",

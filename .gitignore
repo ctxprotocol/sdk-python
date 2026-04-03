@@ -44,6 +44,10 @@ htmlcov/
 *.md
 !README.md
 !docs/mcp-builder-template.md
+!docs/mcp-server-analysis-prompt.md
+!docs/mcp-contributor-deep-validation-system-prompt.md
+!docs/mcp-tool-optimization-skill.md
+!docs/README.md
 
 # Shell scripts (deployment)
 *.sh
