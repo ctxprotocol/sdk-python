@@ -41,6 +41,7 @@ class Discovery:
             Literal["instant", "fast", "slow", "streaming"]
         ] | None = None,
         exclude_slow: bool | None = None,
+        favorites_only: bool | None = None,
     ) -> list[Tool]:
         """Search for tools matching a query string.
 
@@ -84,6 +85,9 @@ class Discovery:
         if exclude_slow is not None:
             params["excludeSlow"] = "true" if exclude_slow else "false"
 
+        if favorites_only is not None:
+            params["favorites_only"] = "true" if favorites_only else "false"
+
         from urllib.parse import urlencode
         query_string = urlencode(params) if params else ""
         endpoint = f"/api/v1/tools/search{'?' + query_string if query_string else ''}"
@@ -105,6 +109,7 @@ class Discovery:
             Literal["instant", "fast", "slow", "streaming"]
         ] | None = None,
         exclude_slow: bool | None = None,
+        favorites_only: bool | None = None,
     ) -> list[Tool]:
         """Get featured/popular tools (empty query search).
 
@@ -126,5 +131,6 @@ class Discovery:
             require_execute_pricing=require_execute_pricing,
             exclude_latency_classes=exclude_latency_classes,
             exclude_slow=exclude_slow,
+            favorites_only=favorites_only,
         )
 

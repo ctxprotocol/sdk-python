@@ -349,6 +349,14 @@ class SearchOptions(BaseModel):
         alias="excludeSlow",
         description="Exclude slow methods in query mode",
     )
+    favorites_only: bool | None = Field(
+        default=None,
+        alias="favoritesOnly",
+        description=(
+            "Restrict discovery to favorite tools for this request. "
+            "Omit to use the account-level default."
+        ),
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -621,6 +629,14 @@ class QueryOptions(BaseModel):
         default=None,
         description="Optional tool IDs to use (auto-discover if not provided)",
     )
+    favorites_only: bool | None = Field(
+        default=None,
+        alias="favoritesOnly",
+        description=(
+            "Restrict auto-discovery to favorite tools for this request. "
+            "Ignored when explicit tools are provided."
+        ),
+    )
     answer_model_id: str | None = Field(
         default=None,
         alias="answerModelId",
@@ -728,7 +744,7 @@ class QueryClarificationOption(BaseModel):
     method_name: str = Field(..., alias="methodName")
     label: str
     description: str
-    fit_score: int = Field(..., alias="fitScore")
+    fit_score: float = Field(..., alias="fitScore")
     recommended: bool
 
     model_config = {"populate_by_name": True}
@@ -784,7 +800,7 @@ class QueryClarificationCandidateSummary(BaseModel):
     """Compact per-candidate summary used in clarification diagnostics."""
 
     option_id: str = Field(..., alias="optionId")
-    fit_score: int = Field(..., alias="fitScore")
+    fit_score: float = Field(..., alias="fitScore")
     llm_relevance_score: float | None = Field(default=None, alias="llmRelevanceScore")
     required_params: list[str] = Field(default_factory=list, alias="requiredParams")
     unresolved_required_params: list[str] = Field(

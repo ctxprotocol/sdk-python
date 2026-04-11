@@ -240,6 +240,7 @@ class Query:
         query: str,
         clarification_policy: QueryClarificationPolicy | None = None,
         tools: list[str] | None = None,
+        favorites_only: bool | None = None,
         answer_model_id: str | None = None,
         response_shape: QueryResponseShape | None = None,
         include_data: bool | None = None,
@@ -261,6 +262,7 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
+            favorites_only: Restrict auto-discovery to favorite tools for this request
             answer_model_id: Optional answer model ID for final synthesis
             response_shape: Structured response mode for query answers
             include_data: Include execution data inline in the query response
@@ -298,6 +300,7 @@ class Query:
             query=query,
             clarification_policy=clarification_policy,
             tools=tools,
+            favorites_only=favorites_only,
             answer_model_id=answer_model_id,
             response_shape=response_shape,
             include_data=include_data,
@@ -327,6 +330,7 @@ class Query:
         query: str,
         clarification_policy: QueryClarificationPolicy | None = None,
         tools: list[str] | None = None,
+        favorites_only: bool | None = None,
         answer_model_id: str | None = None,
         response_shape: QueryResponseShape | None = None,
         include_data: bool | None = None,
@@ -348,6 +352,7 @@ class Query:
         Args:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
+            favorites_only: Restrict auto-discovery to favorite tools for this request
             answer_model_id: Optional answer model ID for final synthesis
             response_shape: Structured response mode for query answers
             include_data: Include execution data inline in the query response
@@ -374,6 +379,8 @@ class Query:
             "tools": tools,
             "stream": True,
         }
+        if favorites_only is not None:
+            request_body["favoritesOnly"] = favorites_only
         if clarification_policy is not None:
             request_body["clarificationPolicy"] = clarification_policy
         if answer_model_id is not None:
