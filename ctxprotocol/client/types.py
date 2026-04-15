@@ -45,7 +45,7 @@ ExecuteSessionStatus = Literal["open", "closed", "expired"]
 
 
 class McpToolRateLimitHints(BaseModel):
-    """Optional planner/runtime pacing hints for MCP methods."""
+    """Optional metadata-scout/runtime pacing hints for MCP methods."""
 
     max_requests_per_minute: int | None = Field(
         default=None,
@@ -74,7 +74,7 @@ class McpToolRateLimitHints(BaseModel):
     )
     notes: str | None = Field(
         default=None,
-        description="Optional human-readable notes for planning",
+        description="Optional human-readable notes for execution behavior",
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}
@@ -112,7 +112,7 @@ class McpToolMeta(BaseModel):
     latency_class: McpToolLatencyClass | None = Field(
         default=None,
         alias="latencyClass",
-        description="Declared latency class for planner/runtime gating",
+        description="Declared latency class for metadata-scout/runtime gating",
     )
     pricing: McpToolPricingMeta | None = Field(
         default=None,
@@ -600,9 +600,9 @@ class QueryOptions(BaseModel):
     """Options for the agentic query endpoint (pay-per-response).
 
     Unlike ``execute()`` which calls a single tool once, ``query()`` sends a
-    natural-language question and lets the server handle discovery-first
-    orchestration (discover/probe -> plan-from-evidence -> execute ->
-    bounded fallback) and AI synthesis.
+    natural-language question and lets the server handle the live librarian
+    pipeline (discover -> select -> metadata scout -> clarify if needed ->
+    iterative execute -> synthesize -> settle).
     One flat fee covers up to 100 MCP skill calls per tool.
 
     Attributes:
@@ -612,8 +612,6 @@ class QueryOptions(BaseModel):
         include_data: Include execution data inline in the query response
         include_data_url: Persist execution data to blob and return URL
         include_developer_trace: Include machine-readable developer runtime traces
-        query_depth: Query orchestration depth mode (fast, auto, or deep)
-        debug_scout_deep_mode: Test-only internal deep lane override
     """
 
     query: str = Field(..., description="The natural-language question to answer")
@@ -621,8 +619,10 @@ class QueryOptions(BaseModel):
         default=None,
         alias="clarificationPolicy",
         description=(
-            "How the SDK should handle clarification-required pre-plan situations: "
-            "`return`, `auto`, or `error`"
+            "How the SDK should handle clarification-required situations: "
+            "`return`, `auto`, or `error`. Default behavior is surface-dependent: "
+            "headless SDK and MCP callers default to `auto`, while first-party "
+            "chat defaults to `return`."
         ),
     )
     tools: list[str] | None = Field(
@@ -666,22 +666,6 @@ class QueryOptions(BaseModel):
         description=(
             "Include machine-readable developer trace output with runtime details "
             "(tool timeline, retries, fallback branches, loop checks)"
-        ),
-    )
-    query_depth: QueryDepth | None = Field(
-        default=None,
-        alias="queryDepth",
-        description=(
-            "Query orchestration depth mode: fast (lower latency), "
-            "auto (server-routed), or deep (completeness-oriented)"
-        ),
-    )
-    debug_scout_deep_mode: QueryDeepMode | None = Field(
-        default=None,
-        alias="debugScoutDeepMode",
-        description=(
-            "Development/testing only: force the server internal deep lane "
-            "(`deep-light` or `deep-heavy`)"
         ),
     )
     idempotency_key: str | None = Field(
@@ -736,7 +720,7 @@ class QueryCost(BaseModel):
 
 
 class QueryClarificationOption(BaseModel):
-    """A grounded clarification option returned before planning continues."""
+    """A grounded clarification option returned before iterative execution continues."""
 
     id: str
     tool_id: str = Field(..., alias="toolId")
@@ -902,7 +886,7 @@ class QueryDeveloperTraceLoopInfo(BaseModel):
 
 
 class QueryDeveloperTraceToolSelection(BaseModel):
-    """Tool-selection metadata attached to discovery/planning diagnostics."""
+    """Tool-selection metadata attached to discovery and metadata-scout diagnostics."""
 
     tool_id: str | None = Field(default=None, alias="toolId")
     tool_name: str | None = Field(default=None, alias="toolName")
@@ -918,7 +902,7 @@ class QueryDeveloperTraceToolSelection(BaseModel):
 
 
 class QueryPlanningTraceDiagnostic(BaseModel):
-    """Initial planner diagnostics for discovery-first planning."""
+    """Execution-contract diagnostics handed to the iterative runtime."""
 
     planner_query: str | None = Field(default=None, alias="plannerQuery")
     scout_evidence_attached: bool | None = Field(default=None, alias="scoutEvidenceAttached")
@@ -974,14 +958,13 @@ class QueryRediscoveryTraceDiagnostic(BaseModel):
 
 
 class QueryDeveloperTraceSelectionDiagnostics(BaseModel):
-    """Selection and lane diagnostics from scout planning."""
+    """Selection and policy diagnostics from the metadata-scout stage."""
 
-    selected_depth: str | None = Field(default=None, alias="selectedDepth")
-    deep_mode: str | None = Field(default=None, alias="deepMode")
+    selected_policy: str | None = Field(default=None, alias="selectedPolicy")
     debug_scout_deep_mode: str | None = Field(default=None, alias="debugScoutDeepMode")
     planner_reasoning_stage: str | None = Field(default=None, alias="plannerReasoningStage")
     scout_enabled: bool | None = Field(default=None, alias="scoutEnabled")
-    preserve_fast_one_shot: bool | None = Field(default=None, alias="preserveFastOneShot")
+    one_shot_bias: bool | None = Field(default=None, alias="oneShotBias")
     candidate_method_count: int | None = Field(default=None, alias="candidateMethodCount")
     scout_probe_status: str | None = Field(default=None, alias="scoutProbeStatus")
     scout_probe_adequacy: str | None = Field(default=None, alias="scoutProbeAdequacy")
@@ -1026,13 +1009,9 @@ class QueryDeveloperTraceSelectionDiagnostics(BaseModel):
         default=None,
         alias="scoutChangedPlannerReasoningStage",
     )
-    scout_initial_selected_depth: str | None = Field(
+    scout_initial_selected_policy: str | None = Field(
         default=None,
-        alias="scoutInitialSelectedDepth",
-    )
-    scout_initial_deep_mode: str | None = Field(
-        default=None,
-        alias="scoutInitialDeepMode",
+        alias="scoutInitialSelectedPolicy",
     )
     scout_initial_planner_reasoning_stage: str | None = Field(
         default=None,
@@ -1145,13 +1124,15 @@ class QueryDeveloperTraceCompletenessDiagnostics(BaseModel):
 
 
 class QueryDeveloperTraceDiagnostics(BaseModel):
-    """Rich developer-trace diagnostics for discovery-first planner internals."""
+    """Rich developer-trace diagnostics for managed query-runtime internals."""
 
     selection: QueryDeveloperTraceSelectionDiagnostics | None = None
-    planning: QueryDeveloperTracePlanningDiagnostics | None = None
+    execution_contract: QueryPlanningTraceDiagnostic | None = Field(
+        default=None,
+        alias="executionContract",
+    )
     cost: QueryDeveloperTraceCostDiagnostics | None = None
-    completeness: QueryDeveloperTraceCompletenessDiagnostics | None = None
-    rediscovery: QueryRediscoveryTraceDiagnostic | None = None
+    verification: QueryDeveloperTraceCompletenessDiagnostics | None = None
     clarification: QueryClarificationDiagnostics | None = None
     contributor_searches: list[ContributorSearchTraceRecord] | None = Field(
         default=None,

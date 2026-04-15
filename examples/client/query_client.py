@@ -48,7 +48,6 @@ async def main() -> None:
                     "What are the top whale movements on Base, and what confidence "
                     "checks did you run?"
                 ),
-                query_depth="deep",
                 include_developer_trace=True,
             )
             print("Response:", answer.response)

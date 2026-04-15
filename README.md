@@ -87,13 +87,12 @@ result = await client.tools.execute(
 print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you a managed librarian contract — the server runs a discovery-first planner contract (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with model-aware context budgeting and can return plain answers or structured evidence packages for one flat fee:
+**Query mode** gives you a managed librarian contract — the server runs the live pipeline (`discover -> select -> metadata scout -> clarify if needed -> iterative execute -> synthesize -> settle`) with model-aware context budgeting and can return plain answers or structured evidence packages for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
     answer_model_id="glm-model",  # optional: choose the final synthesis model
     response_shape="answer_with_evidence",  # optional: answer | answer_with_evidence | evidence_only
-    query_depth="deep",        # optional: fast | auto | deep
     include_data_url=True,     # optional: persist full execution data to blob
     include_developer_trace=True,  # optional: include runtime developer trace
 )
@@ -261,19 +260,17 @@ closed = await client.tools.close_session("sess_123")
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
+#### `client.query.run(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
-Run an agentic query. The server applies discovery-first orchestration (`discover/probe -> plan-from-evidence -> execute -> bounded fallback`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer`, `answer_with_evidence`, or `evidence_only`).
+Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> metadata scout -> clarify if needed -> iterative execute -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer`, `answer_with_evidence`, or `evidence_only`).
 
 `client.query.run()` buffers the same SSE transport used by `client.query.stream()` and returns the final `done` result. This keeps Python aligned with the TypeScript SDK and the live query runtime.
 
-`query_depth` controls orchestration depth:
-- `fast`: lower-latency path for simple lookups.
-- `auto`: server routes to either `fast` or `deep` from query intent + selected tool complexity.
-- `deep`: completeness-oriented path (default when omitted).
+The query runtime now exposes a single managed executor surface.
+The server decides internal budgets, ambiguity handling, and exploration policy
+from the query itself instead of asking SDK callers to choose a lane.
 
 `include_developer_trace` and `orchestration_metrics` are optional diagnostics.
-`debug_scout_deep_mode` remains test-only and should not be used in production flows.
 
 ```python
 # Simple string
@@ -284,7 +281,6 @@ answer = await client.query.run(
     query="Analyze whale activity on Base",
     tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
     answer_model_id="kimi-model-thinking",   # optional final synthesis model
-    query_depth="auto",                      # optional: fast | auto | deep
     include_data=True,                       # optional: include execution data inline
     include_data_url=True,                   # optional: include blob URL for full data
     include_developer_trace=True,            # optional: include Developer Mode trace
@@ -307,7 +303,7 @@ print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 
 When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
 
-#### `client.query.stream(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, query_depth?, debug_scout_deep_mode?, idempotency_key?)`
+#### `client.query.stream(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
 Same as `run()` but streams events in real-time via SSE.
 
@@ -321,7 +317,6 @@ Event types:
 ```python
 async for event in client.query.stream(
     query="What are the top whale movements?",
-    query_depth="fast",
 ):
     if event.type == "tool-status":
         print(f"Tool {event.tool.name}: {event.status}")

@@ -129,7 +129,6 @@ async def run_stream_probe(client: ContextClient) -> dict[str, Any]:
     async for event in client.query.stream(
         query="Top 3 politics markets by recent volume",
         tools=[POLYMARKET_TOOL_ID],
-        query_depth="deep",
         include_developer_trace=True,
     ):
         if event.type in event_counts:
@@ -157,7 +156,6 @@ async def main() -> None:
                 result = await client.query.run(
                     query=prompt,
                     tools=[POLYMARKET_TOOL_ID],
-                    query_depth="deep",
                     include_data=True,
                     include_developer_trace=True,
                 )

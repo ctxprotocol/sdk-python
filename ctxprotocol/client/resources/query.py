@@ -3,8 +3,9 @@ Query resource for pay-per-response agentic queries.
 
 Unlike ``tools.execute()`` which calls a single tool once (pay-per-request),
 the Query resource sends a natural-language question and lets the server
-handle discovery-first orchestration (discover/probe -> plan-from-evidence ->
-execute -> bounded fallback) and AI synthesis — all for one flat fee.
+handle the live librarian pipeline (discover -> select -> metadata scout ->
+clarify if needed -> iterative execute -> synthesize -> settle) and AI
+synthesis — all for one flat fee.
 """
 
 from __future__ import annotations
@@ -16,8 +17,6 @@ from ctxprotocol.client.types import (
     ContextError,
     QueryClarificationPolicy,
     QueryDeveloperTrace,
-    QueryDeepMode,
-    QueryDepth,
     QueryResponseShape,
     QueryResult,
     QueryStreamDeveloperTraceEvent,
@@ -246,8 +245,6 @@ class Query:
         include_data: bool | None = None,
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
-        query_depth: QueryDepth | None = None,
-        debug_scout_deep_mode: QueryDeepMode | None = None,
         idempotency_key: str | None = None,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
@@ -268,8 +265,6 @@ class Query:
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
-            query_depth: Query orchestration depth mode (fast, auto, or deep)
-            debug_scout_deep_mode: Test-only internal deep lane override
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
@@ -306,8 +301,6 @@ class Query:
             include_data=include_data,
             include_data_url=include_data_url,
             include_developer_trace=include_developer_trace,
-            query_depth=query_depth,
-            debug_scout_deep_mode=debug_scout_deep_mode,
             idempotency_key=idempotency_key,
         ):
             if event.type == "error":
@@ -336,8 +329,6 @@ class Query:
         include_data: bool | None = None,
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
-        query_depth: QueryDepth | None = None,
-        debug_scout_deep_mode: QueryDeepMode | None = None,
         idempotency_key: str | None = None,
     ) -> AsyncGenerator[QueryStreamEvent, None]:
         """Run an agentic query with streaming via SSE.
@@ -358,8 +349,6 @@ class Query:
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
-            query_depth: Query orchestration depth mode (fast, auto, or deep)
-            debug_scout_deep_mode: Test-only internal deep lane override
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Yields:
@@ -393,10 +382,6 @@ class Query:
             request_body["includeDataUrl"] = include_data_url
         if include_developer_trace is not None:
             request_body["includeDeveloperTrace"] = include_developer_trace
-        if query_depth is not None:
-            request_body["queryDepth"] = query_depth
-        if debug_scout_deep_mode is not None:
-            request_body["debugScoutDeepMode"] = debug_scout_deep_mode
 
         response = await self._client.fetch_stream(
             "/api/v1/query",

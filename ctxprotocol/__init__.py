@@ -62,7 +62,6 @@ from ctxprotocol.client.types import (
     # Query types (pay-per-response)
     QueryApiSuccessResponse,
     QueryCost,
-    QueryDeepMode,
     QueryCompletenessRepairEvent,
     QueryDeveloperTrace,
     QueryDeveloperTraceDiagnostics,
@@ -184,7 +183,6 @@ __all__ = [
     "QueryResult",
     "QueryToolUsage",
     "QueryCost",
-    "QueryDeepMode",
     "QueryCompletenessRepairEvent",
     "QueryDeveloperTrace",
     "QueryDeveloperTraceDiagnostics",

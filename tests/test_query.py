@@ -165,12 +165,11 @@ MOCK_DEVELOPER_TRACE: dict[str, Any] = {
     ],
     "diagnostics": {
         "selection": {
-            "selectedDepth": "deep",
-            "deepMode": "deep-heavy",
+            "selectedPolicy": "exploratory",
             "debugScoutDeepMode": "deep-heavy",
             "plannerReasoningStage": "full",
             "scoutEnabled": True,
-            "preserveFastOneShot": False,
+            "oneShotBias": False,
             "candidateMethodCount": 12,
             "scoutProbeStatus": "ready",
             "scoutProbeAdequacy": "limited",
@@ -185,8 +184,7 @@ MOCK_DEVELOPER_TRACE: dict[str, Any] = {
             "scoutPrePlanProbeBudgetReasonCode": None,
             "scoutChangedInitialPlan": True,
             "scoutChangedPlannerReasoningStage": True,
-            "scoutInitialSelectedDepth": "deep",
-            "scoutInitialDeepMode": "deep-light",
+            "scoutInitialSelectedPolicy": "exploratory",
             "scoutInitialPlannerReasoningStage": "focused",
             "scoutInitialReasonCode": "metadata_quality_deep_light",
             "scoutFinalReasonCode": "probe_detected_inadequacy",
@@ -565,8 +563,6 @@ class TestQueryRun:
                 include_data=True,
                 include_data_url=True,
                 include_developer_trace=True,
-                query_depth="auto",
-                debug_scout_deep_mode="deep-light",
             )
 
         mock_stream.assert_called_once_with(
@@ -581,8 +577,6 @@ class TestQueryRun:
                 "includeData": True,
                 "includeDataUrl": True,
                 "includeDeveloperTrace": True,
-                "queryDepth": "auto",
-                "debugScoutDeepMode": "deep-light",
             },
             extra_headers=None,
         )
@@ -619,13 +613,14 @@ class TestQueryRun:
         assert result.developer_trace.diagnostics is not None
         assert result.developer_trace.diagnostics.selection is not None
         selection = result.developer_trace.diagnostics.selection
+        assert selection.selected_policy == "exploratory"
+        assert selection.one_shot_bias is False
         assert selection.scout_probe_query_safe_candidate_count == 8
         assert selection.scout_probe_ranked_method_count == 5
         assert selection.scout_probe_ambiguity_pool_count == 2
         assert selection.scout_pre_plan_probe_calls == 1
         assert selection.scout_changed_initial_plan is True
-        assert selection.scout_initial_selected_depth == "deep"
-        assert selection.scout_initial_deep_mode == "deep-light"
+        assert selection.scout_initial_selected_policy == "exploratory"
         assert selection.scout_initial_planner_reasoning_stage == "focused"
         assert selection.scout_initial_reason_code == "metadata_quality_deep_light"
         assert selection.scout_final_reason_code == "probe_detected_inadequacy"
@@ -667,12 +662,9 @@ class TestQueryRun:
         assert result.developer_trace.timeline is not None
         assert len(result.developer_trace.timeline) == 2
 
-    def test_query_options_supports_query_depth_and_alias(self) -> None:
-        """QueryOptions accepts query_depth and queryDepth aliases."""
-        snake_case = QueryOptions(query="test", query_depth="fast")
-        camel_case = QueryOptions(query="test", queryDepth="deep")
+    def test_query_options_supports_public_aliases(self) -> None:
+        """QueryOptions accepts supported public aliases."""
         trace_alias = QueryOptions(query="test", includeDeveloperTrace=True)
-        deep_mode_alias = QueryOptions(query="test", debugScoutDeepMode="deep-heavy")
         clarification_alias = QueryOptions(query="test", clarificationPolicy="auto")
         answer_model_alias = QueryOptions(query="test", answerModelId="glm-model")
         response_shape_alias = QueryOptions(
@@ -680,17 +672,9 @@ class TestQueryRun:
             responseShape="evidence_only",
         )
 
-        assert snake_case.query_depth == "fast"
-        assert camel_case.query_depth == "deep"
-        assert snake_case.model_dump(by_alias=True)["queryDepth"] == "fast"
         assert trace_alias.include_developer_trace is True
         assert (
             trace_alias.model_dump(by_alias=True)["includeDeveloperTrace"] is True
-        )
-        assert deep_mode_alias.debug_scout_deep_mode == "deep-heavy"
-        assert (
-            deep_mode_alias.model_dump(by_alias=True)["debugScoutDeepMode"]
-            == "deep-heavy"
         )
         assert clarification_alias.clarification_policy == "auto"
         assert (
@@ -1169,8 +1153,6 @@ class TestQueryStream:
                 include_data=True,
                 include_data_url=True,
                 include_developer_trace=True,
-                query_depth="deep",
-                debug_scout_deep_mode="deep-heavy",
             ):
                 events.append(event)
 
@@ -1182,8 +1164,6 @@ class TestQueryStream:
         assert call_kwargs[1]["json_body"]["includeData"] is True
         assert call_kwargs[1]["json_body"]["includeDataUrl"] is True
         assert call_kwargs[1]["json_body"]["includeDeveloperTrace"] is True
-        assert call_kwargs[1]["json_body"]["queryDepth"] == "deep"
-        assert call_kwargs[1]["json_body"]["debugScoutDeepMode"] == "deep-heavy"
 
     async def test_stream_forwards_clarification_policy(self) -> None:
         """Streaming request forwards clarificationPolicy."""
