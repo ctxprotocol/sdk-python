@@ -3,9 +3,9 @@ Query resource for pay-per-response agentic queries.
 
 Unlike ``tools.execute()`` which calls a single tool once (pay-per-request),
 the Query resource sends a natural-language question and lets the server
-handle the live librarian pipeline (discover -> select -> metadata scout ->
-clarify if needed -> iterative execute -> synthesize -> settle) and AI
-synthesis — all for one flat fee.
+handle the live librarian pipeline (discover -> select -> iterative
+execute (with in-loop clarification if needed) -> synthesize -> settle)
+and AI synthesis — all for one flat fee.
 """
 
 from __future__ import annotations

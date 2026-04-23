@@ -45,7 +45,7 @@ ExecuteSessionStatus = Literal["open", "closed", "expired"]
 
 
 class McpToolRateLimitHints(BaseModel):
-    """Optional metadata-scout/runtime pacing hints for MCP methods."""
+    """Optional runtime pacing hints for MCP methods."""
 
     max_requests_per_minute: int | None = Field(
         default=None,
@@ -112,7 +112,7 @@ class McpToolMeta(BaseModel):
     latency_class: McpToolLatencyClass | None = Field(
         default=None,
         alias="latencyClass",
-        description="Declared latency class for metadata-scout/runtime gating",
+        description="Declared latency class for runtime gating",
     )
     pricing: McpToolPricingMeta | None = Field(
         default=None,
@@ -601,8 +601,8 @@ class QueryOptions(BaseModel):
 
     Unlike ``execute()`` which calls a single tool once, ``query()`` sends a
     natural-language question and lets the server handle the live librarian
-    pipeline (discover -> select -> metadata scout -> clarify if needed ->
-    iterative execute -> synthesize -> settle).
+    pipeline (discover -> select -> iterative execute (with in-loop
+    clarification if needed) -> synthesize -> settle).
     One flat fee covers up to 100 MCP skill calls per tool.
 
     Attributes:
@@ -886,7 +886,7 @@ class QueryDeveloperTraceLoopInfo(BaseModel):
 
 
 class QueryDeveloperTraceToolSelection(BaseModel):
-    """Tool-selection metadata attached to discovery and metadata-scout diagnostics."""
+    """Tool-selection metadata attached to discovery diagnostics."""
 
     tool_id: str | None = Field(default=None, alias="toolId")
     tool_name: str | None = Field(default=None, alias="toolName")
@@ -958,7 +958,7 @@ class QueryRediscoveryTraceDiagnostic(BaseModel):
 
 
 class QueryDeveloperTraceSelectionDiagnostics(BaseModel):
-    """Selection and policy diagnostics from the metadata-scout stage."""
+    """Tool-selection and policy diagnostics for managed query-runtime internals."""
 
     selected_policy: str | None = Field(default=None, alias="selectedPolicy")
     debug_scout_deep_mode: str | None = Field(default=None, alias="debugScoutDeepMode")

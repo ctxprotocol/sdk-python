@@ -87,7 +87,7 @@ result = await client.tools.execute(
 print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you a managed librarian contract — the server runs the live pipeline (`discover -> select -> metadata scout -> clarify if needed -> iterative execute -> synthesize -> settle`) with model-aware context budgeting and can return plain answers or structured evidence packages for one flat fee:
+**Query mode** gives you a managed librarian contract — the server runs the live pipeline (`discover -> select -> iterative execute (with in-loop clarification if needed) -> synthesize -> settle`) with model-aware context budgeting and can return plain answers or structured evidence packages for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
@@ -262,7 +262,7 @@ closed = await client.tools.close_session("sess_123")
 
 #### `client.query.run(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
-Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> metadata scout -> clarify if needed -> iterative execute -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer`, `answer_with_evidence`, or `evidence_only`).
+Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> iterative execute (with in-loop clarification if needed) -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer`, `answer_with_evidence`, or `evidence_only`).
 
 `client.query.run()` buffers the same SSE transport used by `client.query.stream()` and returns the final `done` result. This keeps Python aligned with the TypeScript SDK and the live query runtime.
 
