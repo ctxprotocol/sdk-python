@@ -42,6 +42,7 @@ DiscoveryMode = Literal["query", "execute"]
 McpToolSurface = Literal["answer", "execute", "both"]
 McpToolLatencyClass = Literal["instant", "fast", "slow", "streaming"]
 ExecuteSessionStatus = Literal["open", "closed", "expired"]
+SuggestedPromptSource = Literal["contributor", "platform", "sdk"]
 
 
 class McpToolRateLimitHints(BaseModel):
@@ -169,6 +170,23 @@ class StructuredMethodGuidanceHints(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SuggestedPrompt(BaseModel):
+    """Clickable example prompt shown on a marketplace listing."""
+
+    text: str = Field(..., description="Prompt text shown to users")
+    source: SuggestedPromptSource = Field(
+        ...,
+        description="Where this prompt came from",
+    )
+    price_hint: str | None = Field(
+        default=None,
+        alias="priceHint",
+        description="Optional listing price display hint",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class McpTool(BaseModel):
     """An individual MCP tool exposed by a tool listing.
 
@@ -228,6 +246,7 @@ class Tool(BaseModel):
         id: Unique identifier for the tool (UUID)
         name: Human-readable name of the tool
         description: Description of what the tool does
+        suggested_prompts: Clickable example prompts shown in the Context app
         price: Price per execution in USDC
         category: Tool category (e.g., "defi", "nft")
         is_verified: Whether the tool is verified by Context Protocol
@@ -243,6 +262,11 @@ class Tool(BaseModel):
     id: str = Field(..., description="Unique identifier for the tool (UUID)")
     name: str = Field(..., description="Human-readable name of the tool")
     description: str = Field(..., description="Description of what the tool does")
+    suggested_prompts: list[SuggestedPrompt] | None = Field(
+        default=None,
+        alias="suggestedPrompts",
+        description="Clickable example prompts shown in the Context app",
+    )
     price: str = Field(..., description="Price per execution in USDC")
     category: str | None = Field(default=None, description="Tool category")
     is_verified: bool | None = Field(
@@ -717,6 +741,116 @@ class QueryCost(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+
+QueryChartType = Literal[
+    "line",
+    "bar",
+    "area",
+    "scatter",
+    "composed",
+    "histogram",
+    "heatmap",
+    "candlestick",
+]
+QueryChartSeriesType = Literal["line", "bar", "area", "scatter"]
+QueryChartAxisType = Literal["time", "category", "number"]
+QueryChartValueFormat = Literal["number", "percent", "currency", "compact"]
+QueryChartDataValue = str | int | float | None
+
+
+class QueryChartSeries(BaseModel):
+    """Single series entry inside a structured chart artifact."""
+
+    key: str
+    label: str | None = None
+    type: QueryChartSeriesType | None = None
+    error_key: str | None = Field(default=None, alias="errorKey")
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryChartAxis(BaseModel):
+    """Optional axis configuration for a structured chart artifact."""
+
+    type: QueryChartAxisType | None = None
+    label: str | None = None
+    format: QueryChartValueFormat | None = None
+
+
+class QueryChartOhlcKeys(BaseModel):
+    """OHLC field mapping for candlestick chart artifacts."""
+
+    open_key: str = Field(..., alias="openKey")
+    high_key: str = Field(..., alias="highKey")
+    low_key: str = Field(..., alias="lowKey")
+    close_key: str = Field(..., alias="closeKey")
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryChartReferenceLine(BaseModel):
+    """Reference threshold or event marker for a structured chart artifact."""
+
+    axis: Literal["x", "y"]
+    value: str | int | float
+    label: str | None = None
+
+
+class QueryChartReferenceArea(BaseModel):
+    """Highlighted x/y region for a structured chart artifact."""
+
+    x1: str | int | float | None = None
+    x2: str | int | float | None = None
+    y1: int | float | None = None
+    y2: int | float | None = None
+    label: str | None = None
+
+
+class QueryChartSpec(BaseModel):
+    """Structured chart spec emitted by the code interpreter."""
+
+    type: QueryChartType
+    x_key: str = Field(..., alias="xKey")
+    series: list[QueryChartSeries]
+    x_axis: QueryChartAxis | None = Field(default=None, alias="xAxis")
+    y_axis: QueryChartAxis | None = Field(default=None, alias="yAxis")
+    legend: bool | None = None
+    stacked: bool | None = None
+    brush: bool | None = None
+    reference_lines: list[QueryChartReferenceLine] | None = Field(
+        default=None,
+        alias="referenceLines",
+    )
+    reference_areas: list[QueryChartReferenceArea] | None = Field(
+        default=None,
+        alias="referenceAreas",
+    )
+    y_key: str | None = Field(default=None, alias="yKey")
+    value_key: str | None = Field(default=None, alias="valueKey")
+    ohlc: QueryChartOhlcKeys | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryChartArtifact(BaseModel):
+    """Structured chart artifact returned as spec + compact data rows."""
+
+    kind: Literal["chart"]
+    spec: QueryChartSpec
+    data: list[dict[str, QueryChartDataValue]]
+    title: str | None = None
+
+
+class QueryMetricTableArtifact(BaseModel):
+    """Native metric table artifact; markdown tables remain the V1 default."""
+
+    kind: Literal["metric_table"]
+    title: str | None = None
+    rows: list[dict[str, str]]
+
+
+QueryComputedArtifact = Union[QueryChartArtifact, QueryMetricTableArtifact]
 
 
 class QueryClarificationOption(BaseModel):
@@ -1496,6 +1630,7 @@ class QueryResult(BaseModel):
         duration_ms: Total duration in milliseconds
         data: Optional execution data (when include_data is enabled)
         data_url: Optional blob URL for execution data (when include_data_url is enabled)
+        computed_artifacts: Optional chart/table artifacts emitted by code interpreter
         developer_trace: Optional machine-readable Developer Mode trace
         orchestration_metrics: Optional high-level first-pass/bounded-fallback metrics
     """
@@ -1516,6 +1651,11 @@ class QueryResult(BaseModel):
         default=None,
         alias="dataUrl",
         description="Optional blob URL for persisted execution data",
+    )
+    computed_artifacts: list[QueryComputedArtifact] | None = Field(
+        default=None,
+        alias="computedArtifacts",
+        description="Optional chart/table artifacts emitted by code interpreter",
     )
     developer_trace: QueryDeveloperTrace | None = Field(
         default=None,
@@ -1616,6 +1756,10 @@ class QueryApiSuccessResponse(BaseModel):
     duration_ms: int = Field(..., alias="durationMs")
     data: Any | None = None
     data_url: str | None = Field(default=None, alias="dataUrl")
+    computed_artifacts: list[QueryComputedArtifact] | None = Field(
+        default=None,
+        alias="computedArtifacts",
+    )
     developer_trace: QueryDeveloperTrace | None = Field(
         default=None,
         alias="developerTrace",

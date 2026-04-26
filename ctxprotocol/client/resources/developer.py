@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, get_args
 from urllib.parse import quote
 
 from ctxprotocol.client.types import ContextError
+from ctxprotocol.client.types import SuggestedPrompt
 
 if TYPE_CHECKING:
     from ctxprotocol.client.client import ContextClient
@@ -44,6 +45,7 @@ class Developer:
         *,
         name: str | None = None,
         description: str | None = None,
+        suggested_prompts: list[SuggestedPrompt] | list[dict[str, Any]] | None = None,
         category: ToolCategory | None = None,
     ) -> dict[str, Any]:
         """Update a tool listing's metadata.
@@ -54,6 +56,7 @@ class Developer:
             tool_id: The UUID of the tool to update.
             name: New display name for the tool.
             description: New marketplace description.
+            suggested_prompts: Validated example questions shown as clickable prompts.
             category: Must be one of the predefined marketplace categories.
 
         Returns:
@@ -79,6 +82,13 @@ class Developer:
             payload["name"] = name
         if description is not None:
             payload["description"] = description
+        if suggested_prompts is not None:
+            payload["suggestedPrompts"] = [
+                prompt.model_dump(by_alias=True)
+                if isinstance(prompt, SuggestedPrompt)
+                else prompt
+                for prompt in suggested_prompts
+            ]
         if category is not None:
             if category not in ALLOWED_TOOL_CATEGORIES:
                 raise ContextError(
@@ -88,7 +98,7 @@ class Developer:
 
         if not payload:
             raise ContextError(
-                "At least one field required: name, description, or category"
+                "At least one field required: name, description, suggested_prompts, or category"
             )
 
         encoded_tool_id = quote(tool_id, safe="")
