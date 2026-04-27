@@ -15,8 +15,10 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from ctxprotocol.client.types import (
     ContextError,
+    QueryAttemptReference,
     QueryClarificationPolicy,
     QueryDeveloperTrace,
+    QueryForkReference,
     QueryResponseShape,
     QueryResult,
     QueryStreamDeveloperTraceEvent,
@@ -211,6 +213,14 @@ class Query:
                         by_alias=True,
                         exclude_none=True,
                     ),
+                    "querySession": (
+                        result.query_session.model_dump(
+                            by_alias=True,
+                            exclude_none=True,
+                        )
+                        if result.query_session
+                        else None
+                    ),
                 }
             )
 
@@ -229,6 +239,14 @@ class Query:
                         by_alias=True,
                         exclude_none=True,
                     ),
+                    "querySession": (
+                        result.query_session.model_dump(
+                            by_alias=True,
+                            exclude_none=True,
+                        )
+                        if result.query_session
+                        else None
+                    ),
                 }
             )
 
@@ -245,6 +263,8 @@ class Query:
         include_data: bool | None = None,
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
+        resume_from: QueryAttemptReference | dict[str, Any] | None = None,
+        fork_from: QueryForkReference | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
@@ -265,6 +285,8 @@ class Query:
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
+            resume_from: Resume a prior durable query attempt
+            fork_from: Fork a new durable query attempt from a previous attempt
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Returns:
@@ -301,6 +323,8 @@ class Query:
             include_data=include_data,
             include_data_url=include_data_url,
             include_developer_trace=include_developer_trace,
+            resume_from=resume_from,
+            fork_from=fork_from,
             idempotency_key=idempotency_key,
         ):
             if event.type == "error":
@@ -329,6 +353,8 @@ class Query:
         include_data: bool | None = None,
         include_data_url: bool | None = None,
         include_developer_trace: bool | None = None,
+        resume_from: QueryAttemptReference | dict[str, Any] | None = None,
+        fork_from: QueryForkReference | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> AsyncGenerator[QueryStreamEvent, None]:
         """Run an agentic query with streaming via SSE.
@@ -349,6 +375,8 @@ class Query:
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
+            resume_from: Resume a prior durable query attempt
+            fork_from: Fork a new durable query attempt from a previous attempt
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
 
         Yields:
@@ -368,6 +396,18 @@ class Query:
             "tools": tools,
             "stream": True,
         }
+        if resume_from is not None:
+            request_body["resumeFrom"] = (
+                resume_from.model_dump(by_alias=True, exclude_none=True)
+                if isinstance(resume_from, QueryAttemptReference)
+                else resume_from
+            )
+        if fork_from is not None:
+            request_body["forkFrom"] = (
+                fork_from.model_dump(by_alias=True, exclude_none=True)
+                if isinstance(fork_from, QueryForkReference)
+                else fork_from
+            )
         if favorites_only is not None:
             request_body["favoritesOnly"] = favorites_only
         if clarification_policy is not None:

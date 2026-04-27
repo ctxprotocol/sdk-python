@@ -9,6 +9,7 @@ the shapes returned by POST /api/v1/query.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,6 +28,17 @@ from ctxprotocol.client.types import (
     QueryStreamTextDeltaEvent,
     QueryStreamToolStatusEvent,
     QueryToolUsage,
+)
+
+SHARED_QUERY_FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "context-sdk"
+    / "fixtures"
+    / "query-response"
+    / "full-grounded-answer.json"
+)
+SHARED_QUERY_FIXTURE: dict[str, dict[str, Any]] = json.loads(
+    SHARED_QUERY_FIXTURE_PATH.read_text(encoding="utf-8")
 )
 
 # ============================================================================
@@ -667,6 +679,21 @@ class TestQueryRun:
         trace_alias = QueryOptions(query="test", includeDeveloperTrace=True)
         clarification_alias = QueryOptions(query="test", clarificationPolicy="auto")
         answer_model_alias = QueryOptions(query="test", answerModelId="glm-model")
+        resume_alias = QueryOptions(
+            query="test",
+            resumeFrom={
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+                "attemptId": "22222222-2222-4222-8222-222222222222",
+            },
+        )
+        fork_alias = QueryOptions(
+            query="test",
+            forkFrom={
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+                "attemptId": "22222222-2222-4222-8222-222222222222",
+                "reason": "manual_fork",
+            },
+        )
         response_shape_alias = QueryOptions(
             query="test",
             responseShape="evidence_only",
@@ -691,6 +718,67 @@ class TestQueryRun:
             response_shape_alias.model_dump(by_alias=True)["responseShape"]
             == "evidence_only"
         )
+        assert resume_alias.resume_from is not None
+        assert (
+            resume_alias.model_dump(by_alias=True)["resumeFrom"]["sessionId"]
+            == "11111111-1111-4111-8111-111111111111"
+        )
+        assert fork_alias.fork_from is not None
+        assert fork_alias.model_dump(by_alias=True)["forkFrom"]["reason"] == "manual_fork"
+
+    async def test_forwards_resume_from_for_run(self) -> None:
+        """resume_from is forwarded to the query endpoint."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
+            await client.query.run(
+                query="test query",
+                resume_from={
+                    "sessionId": "11111111-1111-4111-8111-111111111111",
+                    "attemptId": "22222222-2222-4222-8222-222222222222",
+                },
+            )
+
+        body = mock_stream.call_args.kwargs["json_body"]
+        assert body["resumeFrom"] == {
+            "sessionId": "11111111-1111-4111-8111-111111111111",
+            "attemptId": "22222222-2222-4222-8222-222222222222",
+        }
+
+    async def test_includes_query_session_in_run_result(self) -> None:
+        """querySession payload is deserialized into QueryResult."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        response = {
+            **MOCK_SUCCESS_RESPONSE,
+            "querySession": {
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+                "attemptId": "22222222-2222-4222-8222-222222222222",
+                "parentAttemptId": None,
+                "rootAttemptId": "22222222-2222-4222-8222-222222222222",
+                "mode": "initial",
+                "origin": "initial_request",
+                "status": "completed",
+                "checkpoint": {
+                    "currentStage": "synthesis",
+                    "latestCheckpointArtifactId": "artifact-1",
+                    "canonicalDatasetId": "dataset-1",
+                    "executionProgramCurrentRevisionId": "rev-1",
+                },
+            },
+        }
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(response)
+            result = await client.query.run("test query")
+
+        assert result.query_session is not None
+        assert result.query_session.session_id == "11111111-1111-4111-8111-111111111111"
+        assert result.query_session.checkpoint.current_stage == "synthesis"
 
     async def test_sends_idempotency_header_when_provided(self) -> None:
         """Explicit idempotency key is forwarded as request header."""
@@ -765,6 +853,71 @@ class TestQueryRun:
         assert result.artifacts.canonical_data_ref.dataset_id == "dataset-1"
         assert result.usage is not None
         assert result.usage.outcome_type == "answer"
+
+    async def test_parses_shared_grounded_answer_fixture(self) -> None:
+        """Shared SDK fixture preserves computed artifacts and grounding."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(
+                SHARED_QUERY_FIXTURE["groundedAnswer"]
+            )
+            result = await client.query.run(
+                query="Compare BTC and ETH returns.",
+                include_developer_trace=True,
+            )
+
+        assert result.outcome_type == "answer"
+        assert result.grounding is not None
+        assert result.grounding.available_tool_count == 4
+        assert result.grounding.selected_method_count == 3
+        assert result.grounding.tool_call_count == 2
+        assert result.grounding.grounded is True
+        assert result.computed_artifacts is not None
+        assert len(result.computed_artifacts) == 2
+        chart = result.computed_artifacts[0]
+        assert chart.kind == "chart"
+        assert chart.title == "BTC vs ETH Cumulative Return"
+        assert chart.spec.x_key == "date"
+        assert chart.data[1]["btcReturn"] == 0.034
+        metric_table = result.computed_artifacts[1]
+        assert metric_table.kind == "metric_table"
+        assert metric_table.rows[0] == {
+            "metric": "BTC cumulative return",
+            "value": "3.4%",
+        }
+        assert result.developer_trace is not None
+        assert result.developer_trace.diagnostics is not None
+        assert result.developer_trace.diagnostics.execution is not None
+        execution = result.developer_trace.diagnostics.execution
+        assert execution.tool_registry is not None
+        assert execution.tool_registry.available_tool_count == 4
+
+    async def test_parses_shared_ungrounded_capability_miss_fixture(self) -> None:
+        """Ungrounded runtime outcomes deserialize as capability_miss."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(
+                SHARED_QUERY_FIXTURE["ungroundedCapabilityMiss"]
+            )
+            result = await client.query.run(
+                query="Compare BTC and ETH returns.",
+                clarification_policy="return",
+            )
+
+        assert result.outcome_type == "capability_miss"
+        assert result.grounding is not None
+        assert result.grounding.available_tool_count == 3
+        assert result.grounding.grounded is False
+        assert result.capability_miss is not None
+        assert result.capability_miss.missing_capabilities == [
+            "runtime_did_not_invoke_selected_tools"
+        ]
 
     async def test_forwards_clarification_policy(self) -> None:
         """clarificationPolicy is forwarded to the server payload."""
@@ -1020,6 +1173,34 @@ class TestQueryStream:
             },
             extra_headers=None,
         )
+
+    async def test_forwards_fork_from_for_stream(self) -> None:
+        """fork_from is forwarded to the query endpoint."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        mock_response = _FakeStreamResponse(MOCK_SSE_LINES)
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = mock_response
+
+            events = []
+            async for event in client.query.stream(
+                query="What are whale movements?",
+                fork_from={
+                    "sessionId": "11111111-1111-4111-8111-111111111111",
+                    "attemptId": "22222222-2222-4222-8222-222222222222",
+                    "reason": "manual_fork",
+                },
+            ):
+                events.append(event)
+
+        body = mock_stream.call_args.kwargs["json_body"]
+        assert body["forkFrom"] == {
+            "sessionId": "11111111-1111-4111-8111-111111111111",
+            "attemptId": "22222222-2222-4222-8222-222222222222",
+            "reason": "manual_fork",
+        }
 
     async def test_yields_all_event_types(self) -> None:
         """All SSE events are parsed and yielded in correct order."""

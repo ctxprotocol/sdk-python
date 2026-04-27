@@ -602,6 +602,14 @@ QueryDeepMode = Literal["deep-light", "deep-heavy"]
 QueryClarificationPolicy = Literal["return", "auto", "error"]
 QueryOutcomeType = Literal["answer", "clarification_required", "capability_miss"]
 QueryResponseShape = Literal["answer", "answer_with_evidence", "evidence_only"]
+QueryAttemptForkReason = Literal[
+    "manual_fork",
+    "clarification_branch",
+    "bounded_rediscovery",
+    "resume_replay",
+    "patch_retry",
+    "unknown",
+]
 QueryResponseEnvelopeViewType = Literal[
     "table",
     "leaderboard",
@@ -618,6 +626,53 @@ QueryClarificationDecisionReasonCode = Literal[
     "semantic_scope_ambiguity",
     "capability_miss",
 ]
+
+
+class QueryAttemptReference(BaseModel):
+    """Public handle for resuming a prior query attempt."""
+
+    session_id: str = Field(..., alias="sessionId")
+    attempt_id: str = Field(..., alias="attemptId")
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryForkReference(QueryAttemptReference):
+    """Public handle for forking a new query attempt from a prior attempt."""
+
+    reason: QueryAttemptForkReason | None = None
+
+
+class QuerySessionCheckpoint(BaseModel):
+    """Public durable checkpoint summary returned by Query responses."""
+
+    current_stage: str | None = Field(default=None, alias="currentStage")
+    latest_checkpoint_artifact_id: str | None = Field(
+        default=None,
+        alias="latestCheckpointArtifactId",
+    )
+    canonical_dataset_id: str | None = Field(default=None, alias="canonicalDatasetId")
+    execution_program_current_revision_id: str | None = Field(
+        default=None,
+        alias="executionProgramCurrentRevisionId",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QuerySessionState(BaseModel):
+    """Public durable continuation state returned by Query responses."""
+
+    session_id: str = Field(..., alias="sessionId")
+    attempt_id: str = Field(..., alias="attemptId")
+    parent_attempt_id: str | None = Field(default=None, alias="parentAttemptId")
+    root_attempt_id: str = Field(..., alias="rootAttemptId")
+    mode: Literal["initial", "resume", "fork"]
+    origin: Literal["initial_request", "resume", "fork"]
+    status: Literal["active", "completed", "failed", "aborted"]
+    checkpoint: QuerySessionCheckpoint
+
+    model_config = {"populate_by_name": True}
 
 
 class QueryOptions(BaseModel):
@@ -652,6 +707,16 @@ class QueryOptions(BaseModel):
     tools: list[str] | None = Field(
         default=None,
         description="Optional tool IDs to use (auto-discover if not provided)",
+    )
+    resume_from: QueryAttemptReference | None = Field(
+        default=None,
+        alias="resumeFrom",
+        description="Resume a prior durable query attempt from its latest checkpoint",
+    )
+    fork_from: QueryForkReference | None = Field(
+        default=None,
+        alias="forkFrom",
+        description="Fork a new durable query attempt from a previous attempt",
     )
     favorites_only: bool | None = Field(
         default=None,
@@ -851,6 +916,122 @@ class QueryMetricTableArtifact(BaseModel):
 
 
 QueryComputedArtifact = Union[QueryChartArtifact, QueryMetricTableArtifact]
+
+
+class QueryToolCallFailureSample(BaseModel):
+    """Capped sample of a marketplace tool call that failed before returning data."""
+
+    tool_name: str = Field(..., alias="toolName")
+    method_name: str = Field(..., alias="methodName")
+    reason: str
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryGroundingSummary(BaseModel):
+    """Public grounding summary for marketplace tool execution."""
+
+    available_tool_count: int = Field(
+        ...,
+        alias="availableToolCount",
+        description="Marketplace methods registered in the iterative runtime",
+    )
+    available_method_names_sample: list[str] = Field(
+        default_factory=list,
+        alias="availableMethodNamesSample",
+        description="Capped sample of method names available to the model",
+    )
+    selected_method_count: int = Field(
+        ...,
+        alias="selectedMethodCount",
+        description="Methods selected before runtime filtering",
+    )
+    selected_but_filtered_out: list[str] = Field(
+        default_factory=list,
+        alias="selectedButFilteredOut",
+        description="Selected methods that did not survive runtime filtering",
+    )
+    tool_call_count: int = Field(
+        ...,
+        alias="toolCallCount",
+        description="Grounded marketplace tool calls actually executed (successes only)",
+    )
+    tool_call_attempt_count: int = Field(
+        default=0,
+        alias="toolCallAttemptCount",
+        description="Total marketplace method invocations attempted (success + failure)",
+    )
+    tool_call_success_count: int = Field(
+        default=0,
+        alias="toolCallSuccessCount",
+        description="Marketplace method invocations that completed without throwing",
+    )
+    tool_call_failure_count: int = Field(
+        default=0,
+        alias="toolCallFailureCount",
+        description="Marketplace method invocations that threw before returning data",
+    )
+    tool_call_failure_samples: list[QueryToolCallFailureSample] = Field(
+        default_factory=list,
+        alias="toolCallFailureSamples",
+        description="Capped sample of recent failed marketplace invocations with reasons",
+    )
+    grounded: bool = Field(
+        ...,
+        description="True when at least one marketplace tool call grounded the answer",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryToolRegistryDiagnostics(BaseModel):
+    """Runtime tool registry diagnostics exposed in developer traces."""
+
+    available_tool_count: int = Field(..., alias="availableToolCount")
+    available_method_names_sample: list[str] = Field(
+        default_factory=list,
+        alias="availableMethodNamesSample",
+    )
+    selected_method_count: int = Field(..., alias="selectedMethodCount")
+    selected_but_filtered_out: list[str] = Field(
+        default_factory=list,
+        alias="selectedButFilteredOut",
+    )
+    tool_call_attempt_count: int = Field(
+        default=0,
+        alias="toolCallAttemptCount",
+    )
+    tool_call_success_count: int = Field(
+        default=0,
+        alias="toolCallSuccessCount",
+    )
+    tool_call_failure_count: int = Field(
+        default=0,
+        alias="toolCallFailureCount",
+    )
+    tool_call_failure_samples: list[QueryToolCallFailureSample] = Field(
+        default_factory=list,
+        alias="toolCallFailureSamples",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class QueryExecutionDiagnostics(BaseModel):
+    """Iterative execution diagnostics attached to developer traces."""
+
+    reasoning_enabled: bool | None = Field(default=None, alias="reasoningEnabled")
+    received_reasoning: bool | None = Field(default=None, alias="receivedReasoning")
+    reasoning_chars: int | None = Field(default=None, alias="reasoningChars")
+    step_budget: int | None = Field(default=None, alias="stepBudget")
+    completed_step_count: int | None = Field(default=None, alias="completedStepCount")
+    tool_call_count: int | None = Field(default=None, alias="toolCallCount")
+    tool_registry: QueryToolRegistryDiagnostics | None = Field(
+        default=None,
+        alias="toolRegistry",
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
 
 class QueryClarificationOption(BaseModel):
@@ -1267,6 +1448,8 @@ class QueryDeveloperTraceDiagnostics(BaseModel):
     )
     cost: QueryDeveloperTraceCostDiagnostics | None = None
     verification: QueryDeveloperTraceCompletenessDiagnostics | None = None
+    completeness: QueryDeveloperTraceCompletenessDiagnostics | None = None
+    execution: QueryExecutionDiagnostics | None = None
     clarification: QueryClarificationDiagnostics | None = None
     contributor_searches: list[ContributorSearchTraceRecord] | None = Field(
         default=None,
@@ -1657,6 +1840,10 @@ class QueryResult(BaseModel):
         alias="computedArtifacts",
         description="Optional chart/table artifacts emitted by code interpreter",
     )
+    grounding: QueryGroundingSummary | None = Field(
+        default=None,
+        description="Public grounding summary for marketplace tool execution",
+    )
     developer_trace: QueryDeveloperTrace | None = Field(
         default=None,
         alias="developerTrace",
@@ -1742,6 +1929,11 @@ class QueryResult(BaseModel):
         alias="actionsTaken",
         description="Ordered public controller actions taken before the final outcome",
     )
+    query_session: QuerySessionState | None = Field(
+        default=None,
+        alias="querySession",
+        description="Public durable continuation handles for resume/fork flows",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -1760,6 +1952,7 @@ class QueryApiSuccessResponse(BaseModel):
         default=None,
         alias="computedArtifacts",
     )
+    grounding: QueryGroundingSummary | None = None
     developer_trace: QueryDeveloperTrace | None = Field(
         default=None,
         alias="developerTrace",
@@ -1803,6 +1996,7 @@ class QueryApiSuccessResponse(BaseModel):
         default=None,
         alias="actionsTaken",
     )
+    query_session: QuerySessionState | None = Field(default=None, alias="querySession")
 
     model_config = {"populate_by_name": True}
 
@@ -1853,6 +2047,7 @@ class QueryStreamErrorEvent(BaseModel):
         default=None,
         alias="capabilityMiss",
     )
+    query_session: QuerySessionState | None = Field(default=None, alias="querySession")
 
     model_config = {"populate_by_name": True}
 
