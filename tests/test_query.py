@@ -895,6 +895,78 @@ class TestQueryRun:
         assert execution.tool_registry is not None
         assert execution.tool_registry.available_tool_count == 4
 
+    async def test_preserves_expanded_chart_artifact_specs(self) -> None:
+        """Expanded chart artifacts remain structured for Python SDK consumers."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        response = {
+            **MOCK_SUCCESS_RESPONSE,
+            "computedArtifacts": [
+                {
+                    "kind": "chart",
+                    "title": "Correlation Heatmap",
+                    "spec": {
+                        "type": "heatmap",
+                        "xKey": "x",
+                        "yKey": "y",
+                        "valueKey": "value",
+                        "series": [{"key": "value", "label": "Correlation"}],
+                        "yAxis": {"label": "Asset"},
+                    },
+                    "data": [
+                        {"x": "BTC", "y": "BTC", "value": 1},
+                        {"x": "BTC", "y": "ETH", "value": 0.82},
+                    ],
+                },
+                {
+                    "kind": "chart",
+                    "title": "BTC Daily Candles",
+                    "spec": {
+                        "type": "candlestick",
+                        "xKey": "time",
+                        "series": [{"key": "close", "label": "Close"}],
+                        "xAxis": {"type": "time", "label": "Date"},
+                        "yAxis": {"label": "Price", "format": "currency"},
+                        "ohlc": {
+                            "openKey": "open",
+                            "highKey": "high",
+                            "lowKey": "low",
+                            "closeKey": "close",
+                        },
+                    },
+                    "data": [
+                        {
+                            "time": "2026-04-01",
+                            "open": 100,
+                            "high": 104,
+                            "low": 98,
+                            "close": 102,
+                        }
+                    ],
+                },
+            ],
+        }
+
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(response)
+            result = await client.query.run("Render richer chart artifacts")
+
+        assert result.computed_artifacts is not None
+        assert len(result.computed_artifacts) == 2
+        heatmap = result.computed_artifacts[0]
+        assert heatmap.kind == "chart"
+        assert heatmap.spec.type == "heatmap"
+        assert heatmap.spec.value_key == "value"
+        assert heatmap.data[1]["value"] == 0.82
+        candlestick = result.computed_artifacts[1]
+        assert candlestick.kind == "chart"
+        assert candlestick.spec.type == "candlestick"
+        assert candlestick.spec.ohlc is not None
+        assert candlestick.spec.ohlc.close_key == "close"
+        assert candlestick.spec.x_axis is not None
+        assert candlestick.spec.x_axis.label == "Date"
+
     async def test_parses_shared_ungrounded_capability_miss_fixture(self) -> None:
         """Ungrounded runtime outcomes deserialize as capability_miss."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
