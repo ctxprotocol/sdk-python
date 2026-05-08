@@ -831,6 +831,8 @@ class QueryChartSeries(BaseModel):
     label: str | None = None
     type: QueryChartSeriesType | None = None
     error_key: str | None = Field(default=None, alias="errorKey")
+    y_axis: Literal["left", "right"] | None = Field(default=None, alias="yAxis")
+    satisfies: str | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -841,6 +843,12 @@ class QueryChartAxis(BaseModel):
     type: QueryChartAxisType | None = None
     label: str | None = None
     format: QueryChartValueFormat | None = None
+    value_scale: Literal["fraction", "percent_points"] | None = Field(
+        default=None,
+        alias="valueScale",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class QueryChartOhlcKeys(BaseModel):
@@ -878,8 +886,10 @@ class QueryChartSpec(BaseModel):
     type: QueryChartType
     x_key: str = Field(..., alias="xKey")
     series: list[QueryChartSeries]
+    expected_measures: list[str] | None = Field(default=None, alias="expectedMeasures")
     x_axis: QueryChartAxis | None = Field(default=None, alias="xAxis")
     y_axis: QueryChartAxis | None = Field(default=None, alias="yAxis")
+    y_axis_right: QueryChartAxis | None = Field(default=None, alias="yAxisRight")
     legend: bool | None = None
     stacked: bool | None = None
     brush: bool | None = None
@@ -907,15 +917,7 @@ class QueryChartArtifact(BaseModel):
     title: str | None = None
 
 
-class QueryMetricTableArtifact(BaseModel):
-    """Native metric table artifact; markdown tables remain the V1 default."""
-
-    kind: Literal["metric_table"]
-    title: str | None = None
-    rows: list[dict[str, str]]
-
-
-QueryComputedArtifact = Union[QueryChartArtifact, QueryMetricTableArtifact]
+QueryComputedArtifact = QueryChartArtifact
 
 
 class QueryToolCallFailureSample(BaseModel):
@@ -1813,7 +1815,7 @@ class QueryResult(BaseModel):
         duration_ms: Total duration in milliseconds
         data: Optional execution data (when include_data is enabled)
         data_url: Optional blob URL for execution data (when include_data_url is enabled)
-        computed_artifacts: Optional chart/table artifacts emitted by code interpreter
+        computed_artifacts: Optional chart artifacts emitted by code interpreter
         developer_trace: Optional machine-readable Developer Mode trace
         orchestration_metrics: Optional high-level first-pass/bounded-fallback metrics
     """
@@ -1838,7 +1840,7 @@ class QueryResult(BaseModel):
     computed_artifacts: list[QueryComputedArtifact] | None = Field(
         default=None,
         alias="computedArtifacts",
-        description="Optional chart/table artifacts emitted by code interpreter",
+        description="Optional chart artifacts emitted by code interpreter",
     )
     grounding: QueryGroundingSummary | None = Field(
         default=None,

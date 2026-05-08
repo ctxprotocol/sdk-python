@@ -876,18 +876,12 @@ class TestQueryRun:
         assert result.grounding.tool_call_count == 2
         assert result.grounding.grounded is True
         assert result.computed_artifacts is not None
-        assert len(result.computed_artifacts) == 2
+        assert len(result.computed_artifacts) == 1
         chart = result.computed_artifacts[0]
         assert chart.kind == "chart"
         assert chart.title == "BTC vs ETH Cumulative Return"
         assert chart.spec.x_key == "date"
         assert chart.data[1]["btcReturn"] == 0.034
-        metric_table = result.computed_artifacts[1]
-        assert metric_table.kind == "metric_table"
-        assert metric_table.rows[0] == {
-            "metric": "BTC cumulative return",
-            "value": "3.4%",
-        }
         assert result.developer_trace is not None
         assert result.developer_trace.diagnostics is not None
         assert result.developer_trace.diagnostics.execution is not None
@@ -909,7 +903,14 @@ class TestQueryRun:
                         "xKey": "x",
                         "yKey": "y",
                         "valueKey": "value",
-                        "series": [{"key": "value", "label": "Correlation"}],
+                        "expectedMeasures": ["correlation"],
+                        "series": [
+                            {
+                                "key": "value",
+                                "label": "Correlation",
+                                "satisfies": "correlation",
+                            }
+                        ],
                         "yAxis": {"label": "Asset"},
                     },
                     "data": [
@@ -943,6 +944,35 @@ class TestQueryRun:
                         }
                     ],
                 },
+                {
+                    "kind": "chart",
+                    "title": "Probability and Volume",
+                    "spec": {
+                        "type": "composed",
+                        "xKey": "market",
+                        "expectedMeasures": ["probability", "volume"],
+                        "series": [
+                            {
+                                "key": "probability",
+                                "label": "Probability",
+                                "satisfies": "probability",
+                                "yAxis": "left",
+                            },
+                            {
+                                "key": "volumeUsd",
+                                "label": "Volume",
+                                "satisfies": "volume",
+                                "yAxis": "right",
+                            },
+                        ],
+                        "yAxis": {"format": "percent", "valueScale": "fraction"},
+                        "yAxisRight": {"format": "currency"},
+                    },
+                    "data": [
+                        {"market": "A", "probability": 0.42, "volumeUsd": 1_500_000},
+                        {"market": "B", "probability": 0.31, "volumeUsd": 900_000},
+                    ],
+                },
             ],
         }
 
@@ -953,10 +983,12 @@ class TestQueryRun:
             result = await client.query.run("Render richer chart artifacts")
 
         assert result.computed_artifacts is not None
-        assert len(result.computed_artifacts) == 2
+        assert len(result.computed_artifacts) == 3
         heatmap = result.computed_artifacts[0]
         assert heatmap.kind == "chart"
         assert heatmap.spec.type == "heatmap"
+        assert heatmap.spec.expected_measures == ["correlation"]
+        assert heatmap.spec.series[0].satisfies == "correlation"
         assert heatmap.spec.value_key == "value"
         assert heatmap.data[1]["value"] == 0.82
         candlestick = result.computed_artifacts[1]
@@ -966,6 +998,14 @@ class TestQueryRun:
         assert candlestick.spec.ohlc.close_key == "close"
         assert candlestick.spec.x_axis is not None
         assert candlestick.spec.x_axis.label == "Date"
+        mixed_axis = result.computed_artifacts[2]
+        assert mixed_axis.kind == "chart"
+        assert mixed_axis.spec.y_axis is not None
+        assert mixed_axis.spec.y_axis.value_scale == "fraction"
+        assert mixed_axis.spec.y_axis_right is not None
+        assert mixed_axis.spec.y_axis_right.format == "currency"
+        assert mixed_axis.spec.series[1].y_axis == "right"
+        assert mixed_axis.spec.series[1].satisfies == "volume"
 
     async def test_parses_shared_ungrounded_capability_miss_fixture(self) -> None:
         """Ungrounded runtime outcomes deserialize as capability_miss."""
