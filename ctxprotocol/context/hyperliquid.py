@@ -212,6 +212,7 @@ class HyperliquidContext(BaseModel):
 
     Attributes:
         wallet_address: The wallet address this context is for
+        active_wallet_address: The single EOA actually connected to Hyperliquid
         perp_positions: Perpetual positions
         open_orders: Open orders
         spot_balances: Spot balances
@@ -223,6 +224,18 @@ class HyperliquidContext(BaseModel):
         ...,
         alias="walletAddress",
         description="The wallet address this context is for",
+    )
+    active_wallet_address: str | None = Field(
+        default=None,
+        alias="activeWalletAddress",
+        description=(
+            "The active wallet address for querying/signing. When multiple EOAs "
+            "are linked, this is the single externally-owned account actually "
+            "connected to Hyperliquid (determined by activity detection on the "
+            "client). Contributors should prefer this over wallet_address when "
+            "issuing Hyperliquid API calls, since wallet_address may be "
+            "comma-joined across multiple linked wallets."
+        ),
     )
     perp_positions: list[HyperliquidPerpPosition] = Field(
         ...,

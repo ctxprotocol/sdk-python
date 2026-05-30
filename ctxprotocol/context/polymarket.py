@@ -72,7 +72,8 @@ class PolymarketContext(BaseModel):
     This is what gets passed to MCP tools for personalized analysis.
 
     Attributes:
-        wallet_address: The wallet address this context is for
+        wallet_address: The wallet address this context is for (may be comma-separated if multiple)
+        active_wallet_address: The active wallet address for signing (the one with Polymarket activity)
         positions: All open positions
         open_orders: All open orders
         total_value: Total portfolio value in USD (sum of position values)
@@ -82,7 +83,17 @@ class PolymarketContext(BaseModel):
     wallet_address: str = Field(
         ...,
         alias="walletAddress",
-        description="The wallet address this context is for",
+        description="The wallet address this context is for (may be comma-separated if multiple)",
+    )
+    active_wallet_address: str | None = Field(
+        default=None,
+        alias="activeWalletAddress",
+        description=(
+            "The active wallet address for signing (the one with Polymarket "
+            "activity). When multiple wallets are linked, this is the wallet that "
+            "should be used for placing orders. Determined by activity detection "
+            "on the client."
+        ),
     )
     positions: list[PolymarketPosition] = Field(..., description="All open positions")
     open_orders: list[PolymarketOrder] = Field(
