@@ -597,14 +597,13 @@ class ExecuteSessionResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# External orchestration depth hint. The server decides the effective depth
+# from the query; this is a soft hint rather than a hard switch.
 QueryDepth = Literal["fast", "auto", "deep"]
-QueryDeepMode = Literal["deep-light", "deep-heavy"]
-QueryClarificationPolicy = Literal["return", "auto", "error"]
-QueryOutcomeType = Literal["answer", "clarification_required", "capability_miss"]
+QueryOutcomeType = Literal["answer", "capability_miss"]
 QueryResponseShape = Literal["answer", "answer_with_evidence", "evidence_only"]
 QueryAttemptForkReason = Literal[
     "manual_fork",
-    "clarification_branch",
     "bounded_rediscovery",
     "resume_replay",
     "patch_retry",
@@ -616,18 +615,6 @@ QueryResponseEnvelopeViewType = Literal[
     "heatmap",
     "timeseries",
 ]
-QueryClarificationDecisionReasonCode = Literal[
-    "rollout_disabled",
-    "no_grounded_candidates",
-    "single_grounded_interpretation",
-    "required_discriminator_ambiguity",
-    "contract_scope_ambiguity",
-    "cost_or_latency_ambiguity",
-    "semantic_scope_ambiguity",
-    "capability_miss",
-]
-
-
 class QueryAttemptReference(BaseModel):
     """Public handle for resuming a prior query attempt."""
 
@@ -680,8 +667,8 @@ class QueryOptions(BaseModel):
 
     Unlike ``execute()`` which calls a single tool once, ``query()`` sends a
     natural-language question and lets the server handle the live librarian
-    pipeline (discover -> select -> iterative execute (with in-loop
-    clarification if needed) -> synthesize -> settle).
+    pipeline (discover -> select -> iterative execute ->
+    synthesize -> settle).
     One flat fee covers up to 100 MCP skill calls per tool.
 
     Attributes:
@@ -694,16 +681,6 @@ class QueryOptions(BaseModel):
     """
 
     query: str = Field(..., description="The natural-language question to answer")
-    clarification_policy: QueryClarificationPolicy | None = Field(
-        default=None,
-        alias="clarificationPolicy",
-        description=(
-            "How the SDK should handle clarification-required situations: "
-            "`return`, `auto`, or `error`. Default behavior is surface-dependent: "
-            "headless SDK and MCP callers default to `auto`, while first-party "
-            "chat defaults to `return`."
-        ),
-    )
     tools: list[str] | None = Field(
         default=None,
         description="Optional tool IDs to use (auto-discover if not provided)",
@@ -735,14 +712,23 @@ class QueryOptions(BaseModel):
         default=None,
         alias="responseShape",
         description=(
-            "Structured response mode: `answer`, `answer_with_evidence`, "
-            "or `evidence_only`"
+            "Structured response mode. The runtime always produces a grounded "
+            "result (raw data + computed artifacts + provenance); this controls "
+            "whether a prose synthesis layer is added on top. "
+            "`answer_with_evidence` returns prose plus the structured grounding "
+            "(chat parity); `evidence_only` returns grounding only with no prose "
+            "(the agent-harness shape, with raw data + computed_artifacts + "
+            "grounding by default); `answer` is the legacy prose-only shape."
         ),
     )
     include_data: bool | None = Field(
         default=None,
         alias="includeData",
-        description="Include execution data inline in the query response",
+        description=(
+            "Include raw execution data inline. Defaults to true for "
+            "response_shape `evidence_only` (its primary payload is the raw "
+            "fetched data); false otherwise. Set explicitly to override."
+        ),
     )
     include_data_url: bool | None = Field(
         default=None,
@@ -1036,33 +1022,6 @@ class QueryExecutionDiagnostics(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
-class QueryClarificationOption(BaseModel):
-    """A grounded clarification option returned before iterative execution continues."""
-
-    id: str
-    tool_id: str = Field(..., alias="toolId")
-    tool_name: str = Field(..., alias="toolName")
-    method_name: str = Field(..., alias="methodName")
-    label: str
-    description: str
-    fit_score: float = Field(..., alias="fitScore")
-    recommended: bool
-
-    model_config = {"populate_by_name": True}
-
-
-class QueryClarificationPayload(BaseModel):
-    """Structured clarification payload surfaced when ambiguity remains."""
-
-    question: str
-    options: list[QueryClarificationOption]
-    allow_freeform: bool = Field(..., alias="allowFreeform")
-    recommended_option_id: str = Field(..., alias="recommendedOptionId")
-    original_query: str = Field(..., alias="originalQuery")
-
-    model_config = {"populate_by_name": True}
-
-
 class QueryCapabilityMissPayload(BaseModel):
     """Structured capability miss payload surfaced when no grounded path remains."""
 
@@ -1081,103 +1040,6 @@ class QueryAssumptionMetadata(BaseModel):
     option_id: str = Field(..., alias="optionId")
     label: str
     reason: str
-
-    model_config = {"populate_by_name": True}
-
-
-class QueryClarificationEvidenceSources(BaseModel):
-    """Which evidence sources contributed to a clarification decision."""
-
-    uses_method_schemas: bool = Field(..., alias="usesMethodSchemas")
-    uses_probe_args: bool = Field(..., alias="usesProbeArgs")
-    uses_method_metadata: bool = Field(..., alias="usesMethodMetadata")
-    uses_tool_selection_context: bool = Field(..., alias="usesToolSelectionContext")
-    uses_llm_selection: bool = Field(..., alias="usesLlmSelection")
-
-    model_config = {"populate_by_name": True}
-
-
-class QueryClarificationCandidateSummary(BaseModel):
-    """Compact per-candidate summary used in clarification diagnostics."""
-
-    option_id: str = Field(..., alias="optionId")
-    fit_score: float = Field(..., alias="fitScore")
-    llm_relevance_score: float | None = Field(default=None, alias="llmRelevanceScore")
-    required_params: list[str] = Field(default_factory=list, alias="requiredParams")
-    unresolved_required_params: list[str] = Field(
-        default_factory=list,
-        alias="unresolvedRequiredParams",
-    )
-    probe_arg_keys: list[str] = Field(default_factory=list, alias="probeArgKeys")
-    input_field_names: list[str] = Field(default_factory=list, alias="inputFieldNames")
-    output_keys: list[str] = Field(default_factory=list, alias="outputKeys")
-    latency_class: str = Field(..., alias="latencyClass")
-    execute_price_usd: str | None = Field(default=None, alias="executePriceUsd")
-    query_eligible: bool = Field(..., alias="queryEligible")
-
-    model_config = {"populate_by_name": True}
-
-
-class QueryClarificationDiagnostics(BaseModel):
-    """Rich diagnostics describing how the ambiguity pipeline reached its decision."""
-
-    orchestration_mode: str = Field(..., alias="orchestrationMode")
-    rollout_stage: str = Field(..., alias="rolloutStage")
-    shadow_mode: bool = Field(..., alias="shadowMode")
-    policy: QueryClarificationPolicy
-    outcome_type: QueryOutcomeType = Field(..., alias="outcomeType")
-    triggered: bool
-    option_count: int = Field(..., alias="optionCount")
-    candidate_count: int = Field(..., alias="candidateCount")
-    viable_candidate_count: int = Field(..., alias="viableCandidateCount")
-    recommended_option_id: str | None = Field(default=None, alias="recommendedOptionId")
-    recommended_option_reason: str | None = Field(
-        default=None,
-        alias="recommendedOptionReason",
-    )
-    auto_resolved: bool = Field(..., alias="autoResolved")
-    auto_select_enabled: bool = Field(..., alias="autoSelectEnabled")
-    assumption_made: QueryAssumptionMetadata | None = Field(
-        default=None,
-        alias="assumptionMade",
-    )
-    missing_capability: str | None = Field(default=None, alias="missingCapability")
-    decision_reason_code: QueryClarificationDecisionReasonCode = Field(
-        ...,
-        alias="decisionReasonCode",
-    )
-    decision_signals: list[str] = Field(default_factory=list, alias="decisionSignals")
-    evidence_sources: QueryClarificationEvidenceSources = Field(
-        ...,
-        alias="evidenceSources",
-    )
-    compared_option_ids: list[str] = Field(default_factory=list, alias="comparedOptionIds")
-    decision_strategy: Literal["deterministic", "llm_primary"] = Field(
-        ...,
-        alias="decisionStrategy",
-    )
-    judge_attempted: bool = Field(..., alias="judgeAttempted")
-    judge_applied: bool = Field(..., alias="judgeApplied")
-    judge_outcome_type: QueryOutcomeType | None = Field(
-        default=None,
-        alias="judgeOutcomeType",
-    )
-    judge_confidence: float | None = Field(default=None, alias="judgeConfidence")
-    judge_reason: str | None = Field(default=None, alias="judgeReason")
-    judge_error: str | None = Field(default=None, alias="judgeError")
-    validator_reason: str | None = Field(default=None, alias="validatorReason")
-    fallback_reason: str | None = Field(default=None, alias="fallbackReason")
-    copy_strategy: Literal["deterministic", "llm_rewritten"] = Field(
-        ...,
-        alias="copyStrategy",
-    )
-    rewrite_attempted: bool = Field(..., alias="rewriteAttempted")
-    rewrite_applied: bool = Field(..., alias="rewriteApplied")
-    rewrite_error: str | None = Field(default=None, alias="rewriteError")
-    candidate_summaries: list[QueryClarificationCandidateSummary] = Field(
-        default_factory=list,
-        alias="candidateSummaries",
-    )
 
     model_config = {"populate_by_name": True}
 
@@ -1452,7 +1314,6 @@ class QueryDeveloperTraceDiagnostics(BaseModel):
     verification: QueryDeveloperTraceCompletenessDiagnostics | None = None
     completeness: QueryDeveloperTraceCompletenessDiagnostics | None = None
     execution: QueryExecutionDiagnostics | None = None
-    clarification: QueryClarificationDiagnostics | None = None
     contributor_searches: list[ContributorSearchTraceRecord] | None = Field(
         default=None,
         alias="contributorSearches",
@@ -1550,11 +1411,9 @@ QueryControllerStopReason = Literal[
     "bounded_runtime_budget",
     "bounded_same_endpoint_guardrail",
     "bounded_upstream_abort_guardrail",
-    "clarification_required",
     "capability_miss",
 ]
 QueryControllerIssueClass = Literal[
-    "scope_ambiguity",
     "missing_evidence",
     "missing_capability",
     "stale_data",
@@ -1564,7 +1423,6 @@ QueryControllerAction = Literal[
     "inspect_current_grounding",
     "patch_current_program",
     "bounded_rediscovery",
-    "clarify_scope",
     "return_capability_miss",
     "return_bounded_answer",
     "return_complete_answer",
@@ -1813,7 +1671,7 @@ class QueryResult(BaseModel):
         tools_used: Tools that were used to answer the query
         cost: Cost breakdown
         duration_ms: Total duration in milliseconds
-        data: Optional execution data (when include_data is enabled)
+        data: Raw execution data (default for evidence_only; else when include_data is enabled)
         data_url: Optional blob URL for execution data (when include_data_url is enabled)
         computed_artifacts: Optional chart artifacts emitted by code interpreter
         developer_trace: Optional machine-readable Developer Mode trace
@@ -1830,7 +1688,11 @@ class QueryResult(BaseModel):
     )
     data: Any | None = Field(
         default=None,
-        description="Optional execution data from tools",
+        description=(
+            "Raw execution data from tools. Returned by default for "
+            "response_shape `evidence_only` (its primary payload); otherwise "
+            "only when include_data is true."
+        ),
     )
     data_url: str | None = Field(
         default=None,
@@ -1901,10 +1763,6 @@ class QueryResult(BaseModel):
         default="answer",
         alias="outcomeType",
         description="Structured query outcome classification",
-    )
-    clarification: QueryClarificationPayload | None = Field(
-        default=None,
-        description="Structured clarification payload when ambiguity remains",
     )
     capability_miss: QueryCapabilityMissPayload | None = Field(
         default=None,
@@ -1977,7 +1835,6 @@ class QueryApiSuccessResponse(BaseModel):
     confidence: QueryResponseEnvelopeConfidence | None = None
     usage: QueryResponseEnvelopeUsage | None = None
     outcome_type: QueryOutcomeType = Field(default="answer", alias="outcomeType")
-    clarification: QueryClarificationPayload | None = None
     capability_miss: QueryCapabilityMissPayload | None = Field(
         default=None,
         alias="capabilityMiss",
@@ -2040,11 +1897,10 @@ class QueryStreamErrorEvent(BaseModel):
     code: ContextErrorCode | str | None = None
     scope: str | None = None
     reason_code: str | None = Field(default=None, alias="reasonCode")
-    outcome_type: Literal["clarification_required", "capability_miss"] | None = Field(
+    outcome_type: Literal["capability_miss"] | None = Field(
         default=None,
         alias="outcomeType",
     )
-    clarification: QueryClarificationPayload | None = None
     capability_miss: QueryCapabilityMissPayload | None = Field(
         default=None,
         alias="capabilityMiss",

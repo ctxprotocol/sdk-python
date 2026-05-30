@@ -214,50 +214,6 @@ MOCK_DEVELOPER_TRACE: dict[str, Any] = {
                 }
             ],
         },
-        "clarification": {
-            "orchestrationMode": "query",
-            "rolloutStage": "candidate",
-            "shadowMode": False,
-            "policy": "return",
-            "outcomeType": "clarification_required",
-            "triggered": True,
-            "optionCount": 2,
-            "candidateCount": 3,
-            "viableCandidateCount": 2,
-            "recommendedOptionId": "tool-1:analyze_event_outcome_liquidity",
-            "recommendedOptionReason": "Event-level interpretation stays broadest.",
-            "autoResolved": False,
-            "autoSelectEnabled": False,
-            "assumptionMade": None,
-            "missingCapability": None,
-            "decisionReasonCode": "semantic_scope_ambiguity",
-            "decisionSignals": ["multi_outcome_market_scope"],
-            "evidenceSources": {
-                "usesMethodSchemas": True,
-                "usesProbeArgs": True,
-                "usesMethodMetadata": True,
-                "usesToolSelectionContext": True,
-                "usesLlmSelection": True,
-            },
-            "comparedOptionIds": [
-                "tool-1:analyze_event_outcome_liquidity",
-                "tool-1:analyze_market_liquidity",
-            ],
-            "decisionStrategy": "llm_primary",
-            "judgeAttempted": True,
-            "judgeApplied": True,
-            "judgeOutcomeType": "clarification_required",
-            "judgeConfidence": 0.84,
-            "judgeReason": "Need the user to choose event-wide or single-outcome scope.",
-            "judgeError": None,
-            "validatorReason": None,
-            "fallbackReason": None,
-            "copyStrategy": "deterministic",
-            "rewriteAttempted": False,
-            "rewriteApplied": False,
-            "rewriteError": None,
-            "candidateSummaries": [],
-        },
     },
 }
 
@@ -272,64 +228,6 @@ MOCK_ORCHESTRATION_METRICS: dict[str, Any] = {
 MOCK_ERROR_RESPONSE: dict[str, Any] = {
     "error": "Insufficient funds. Set a spending cap in the dashboard.",
     "code": "insufficient_allowance",
-}
-
-MOCK_CLARIFICATION_RESULT: dict[str, Any] = {
-    "response": (
-        "I found multiple plausible ways to interpret this request. "
-        "Which direction should I take?"
-    ),
-    "toolsUsed": [],
-    "cost": {
-        "totalCostUsd": "0.000000",
-        "toolCostUsd": "0.000000",
-        "modelCostUsd": "0.000000",
-    },
-    "durationMs": 1100,
-    "outcomeType": "clarification_required",
-    "clarification": {
-        "question": "Which direction should I take?",
-        "options": [
-            {
-                "id": "tool-1:analyze_event_outcome_liquidity",
-                "toolId": "tool-1",
-                "toolName": "Polymarket",
-                "methodName": "analyze_event_outcome_liquidity",
-                "label": "Compare event-level liquidity",
-                "description": "Polymarket -> analyze_event_outcome_liquidity",
-                "fitScore": 9,
-                "recommended": True,
-            },
-            {
-                "id": "tool-1:analyze_market_liquidity",
-                "toolId": "tool-1",
-                "toolName": "Polymarket",
-                "methodName": "analyze_market_liquidity",
-                "label": "Analyze one specific outcome",
-                "description": "Polymarket -> analyze_market_liquidity",
-                "fitScore": 5,
-                "recommended": False,
-            },
-        ],
-        "allowFreeform": True,
-        "recommendedOptionId": "tool-1:analyze_event_outcome_liquidity",
-        "originalQuery": "Analyze liquidity for the World Cup winner market",
-    },
-}
-
-MOCK_AUTO_SELECTED_RESULT: dict[str, Any] = {
-    **MOCK_SUCCESS_RESPONSE,
-    "outcomeType": "answer",
-    "assumptionMade": {
-        "mode": "auto",
-        "optionId": "tool-1:analyze_event_outcome_liquidity",
-        "label": "Compare event-level liquidity",
-        "reason": (
-            "Recommended because Polymarket.analyze_event_outcome_liquidity "
-            "ranked highest after comparing probe fit, method contract details, "
-            "and grounded query eligibility."
-        ),
-    },
 }
 
 MOCK_CAPABILITY_MISS_RESULT: dict[str, Any] = {
@@ -637,10 +535,6 @@ class TestQueryRun:
         assert selection.scout_initial_reason_code == "metadata_quality_deep_light"
         assert selection.scout_final_reason_code == "probe_detected_inadequacy"
         assert selection.scout_llm_selection_used is True
-        assert result.developer_trace.diagnostics.clarification is not None
-        clarification = result.developer_trace.diagnostics.clarification
-        assert clarification.decision_strategy == "llm_primary"
-        assert clarification.judge_confidence == 0.84
 
     async def test_developer_trace_is_none_when_not_returned(self) -> None:
         """Query result keeps developer_trace unset when API omits it."""
@@ -677,7 +571,6 @@ class TestQueryRun:
     def test_query_options_supports_public_aliases(self) -> None:
         """QueryOptions accepts supported public aliases."""
         trace_alias = QueryOptions(query="test", includeDeveloperTrace=True)
-        clarification_alias = QueryOptions(query="test", clarificationPolicy="auto")
         answer_model_alias = QueryOptions(query="test", answerModelId="glm-model")
         resume_alias = QueryOptions(
             query="test",
@@ -702,11 +595,6 @@ class TestQueryRun:
         assert trace_alias.include_developer_trace is True
         assert (
             trace_alias.model_dump(by_alias=True)["includeDeveloperTrace"] is True
-        )
-        assert clarification_alias.clarification_policy == "auto"
-        assert (
-            clarification_alias.model_dump(by_alias=True)["clarificationPolicy"]
-            == "auto"
         )
         assert answer_model_alias.answer_model_id == "glm-model"
         assert (
@@ -1019,7 +907,6 @@ class TestQueryRun:
             )
             result = await client.query.run(
                 query="Compare BTC and ETH returns.",
-                clarification_policy="return",
             )
 
         assert result.outcome_type == "capability_miss"
@@ -1030,54 +917,6 @@ class TestQueryRun:
         assert result.capability_miss.missing_capabilities == [
             "runtime_did_not_invoke_selected_tools"
         ]
-
-    async def test_forwards_clarification_policy(self) -> None:
-        """clarificationPolicy is forwarded to the server payload."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = _make_done_stream_response(MOCK_SUCCESS_RESPONSE)
-            await client.query.run(
-                query="Analyze whale activity",
-                clarification_policy="auto",
-            )
-
-        mock_stream.assert_called_once_with(
-            "/api/v1/query",
-            method="POST",
-            json_body={
-                "query": "Analyze whale activity",
-                "tools": None,
-                "stream": True,
-                "clarificationPolicy": "auto",
-            },
-            extra_headers=None,
-        )
-
-    async def test_returns_structured_clarification_result(self) -> None:
-        """Structured clarification results deserialize into QueryResult."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = _make_done_stream_response(
-                MOCK_CLARIFICATION_RESULT
-            )
-            result = await client.query.run(
-                query="Analyze liquidity for the World Cup winner market",
-                clarification_policy="return",
-            )
-
-        assert result.outcome_type == "clarification_required"
-        assert result.clarification is not None
-        assert len(result.clarification.options) == 2
-        assert (
-            result.clarification.recommended_option_id
-            == "tool-1:analyze_event_outcome_liquidity"
-        )
 
     async def test_returns_structured_capability_miss_result(self) -> None:
         """Structured capability miss results deserialize into QueryResult."""
@@ -1094,7 +933,6 @@ class TestQueryRun:
                     "Using only Polymarket data, give me live order-book imbalance "
                     "for BTC perpetuals on Bybit."
                 ),
-                clarification_policy="return",
             )
 
         assert result.outcome_type == "capability_miss"
@@ -1103,70 +941,6 @@ class TestQueryRun:
             "Need venue coverage that no selected tool exposes."
         ]
         assert len(result.capability_miss.suggested_rewrites) == 3
-
-    async def test_preserves_auto_assumption_metadata(self) -> None:
-        """Auto clarification decisions keep assumption metadata on answer results."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = _make_done_stream_response(
-                MOCK_AUTO_SELECTED_RESULT
-            )
-            result = await client.query.run(
-                query="Analyze liquidity for the World Cup winner market",
-                clarification_policy="auto",
-            )
-
-        assert result.outcome_type == "answer"
-        assert result.assumption_made is not None
-        assert result.assumption_made.mode == "auto"
-        assert (
-            result.assumption_made.option_id
-            == "tool-1:analyze_event_outcome_liquidity"
-        )
-
-    async def test_raises_when_error_policy_receives_clarification(self) -> None:
-        """error clarificationPolicy turns clarification outcomes into ContextError."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = _make_done_stream_response(
-                MOCK_CLARIFICATION_RESULT
-            )
-
-            with pytest.raises(ContextError) as exc_info:
-                await client.query.run(
-                    query="Analyze liquidity for the World Cup winner market",
-                    clarification_policy="error",
-                )
-
-        assert exc_info.value.code == "clarification_required"
-
-    async def test_raises_when_error_policy_receives_capability_miss(self) -> None:
-        """error clarificationPolicy turns capability misses into ContextError."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = _make_done_stream_response(
-                MOCK_CAPABILITY_MISS_RESULT
-            )
-
-            with pytest.raises(ContextError) as exc_info:
-                await client.query.run(
-                    query=(
-                        "Using only Polymarket data, give me live order-book "
-                        "imbalance for BTC perpetuals on Bybit."
-                    ),
-                    clarification_policy="error",
-                )
-
-        assert exc_info.value.code == "capability_miss"
 
     async def test_raises_if_run_stream_ends_before_done_event(self) -> None:
         """Run raises when the stream ends without a done event."""
@@ -1458,49 +1232,6 @@ class TestQueryStream:
         assert call_kwargs[1]["json_body"]["includeDataUrl"] is True
         assert call_kwargs[1]["json_body"]["includeDeveloperTrace"] is True
 
-    async def test_stream_forwards_clarification_policy(self) -> None:
-        """Streaming request forwards clarificationPolicy."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-        mock_response = _FakeStreamResponse(
-            ['data: {"type":"text-delta","delta":"result "}', "data: [DONE]"]
-        )
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = mock_response
-
-            async for _event in client.query.stream(
-                query="test",
-                clarification_policy="auto",
-            ):
-                pass
-
-        call_kwargs = mock_stream.call_args
-        assert call_kwargs[1]["json_body"]["clarificationPolicy"] == "auto"
-
-    async def test_stream_yields_structured_clarification_done_events(self) -> None:
-        """Structured clarification done payloads are preserved in stream mode."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-        mock_response = _make_done_stream_response(MOCK_CLARIFICATION_RESULT)
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = mock_response
-
-            events = []
-            async for event in client.query.stream(
-                query="test",
-                clarification_policy="return",
-            ):
-                events.append(event)
-
-        done_events = [e for e in events if isinstance(e, QueryStreamDoneEvent)]
-        assert len(done_events) == 1
-        assert done_events[0].result.outcome_type == "clarification_required"
-        assert done_events[0].result.clarification is not None
-
     async def test_stream_yields_structured_capability_miss_done_events(self) -> None:
         """Structured capability misses are preserved in stream mode."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
@@ -1517,7 +1248,6 @@ class TestQueryStream:
                     "Using only Polymarket data, give me live order-book imbalance "
                     "for BTC perpetuals on Bybit."
                 ),
-                clarification_policy="return",
             ):
                 events.append(event)
 
@@ -1525,31 +1255,6 @@ class TestQueryStream:
         assert len(done_events) == 1
         assert done_events[0].result.outcome_type == "capability_miss"
         assert done_events[0].result.capability_miss is not None
-
-    async def test_stream_turns_structured_outcomes_into_error_events_for_error_policy(
-        self,
-    ) -> None:
-        """error clarificationPolicy yields terminal error events instead of done."""
-        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
-        mock_response = _make_done_stream_response(MOCK_CLARIFICATION_RESULT)
-
-        with patch.object(
-            client, "fetch_stream", new_callable=AsyncMock
-        ) as mock_stream:
-            mock_stream.return_value = mock_response
-
-            events = []
-            async for event in client.query.stream(
-                query="test",
-                clarification_policy="error",
-            ):
-                events.append(event)
-
-        error_events = [e for e in events if isinstance(e, QueryStreamErrorEvent)]
-        assert len(error_events) == 1
-        assert error_events[0].outcome_type == "clarification_required"
-        assert error_events[0].clarification is not None
-        assert not any(isinstance(event, QueryStreamDoneEvent) for event in events)
 
     async def test_stream_handles_trace_events_and_aggregates_done_trace(self) -> None:
         """Trace events are emitted and merged into done.result.developer_trace."""

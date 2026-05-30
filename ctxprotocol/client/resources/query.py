@@ -4,8 +4,7 @@ Query resource for pay-per-response agentic queries.
 Unlike ``tools.execute()`` which calls a single tool once (pay-per-request),
 the Query resource sends a natural-language question and lets the server
 handle the live librarian pipeline (discover -> select -> iterative
-execute (with in-loop clarification if needed) -> synthesize -> settle)
-and AI synthesis — all for one flat fee.
+execute -> synthesize -> settle) and AI synthesis — all for one flat fee.
 """
 
 from __future__ import annotations
@@ -16,7 +15,6 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator
 from ctxprotocol.client.types import (
     ContextError,
     QueryAttemptReference,
-    QueryClarificationPolicy,
     QueryDeveloperTrace,
     QueryForkReference,
     QueryResponseShape,
@@ -190,72 +188,9 @@ class Query:
             }
         )
 
-    @staticmethod
-    def _build_policy_error_event(
-        result: QueryResult,
-        clarification_policy: QueryClarificationPolicy | None,
-    ) -> QueryStreamErrorEvent | None:
-        if clarification_policy != "error":
-            return None
-
-        if (
-            result.outcome_type == "clarification_required"
-            and result.clarification is not None
-        ):
-            return QueryStreamErrorEvent.model_validate(
-                {
-                    "type": "error",
-                    "error": result.response,
-                    "code": "clarification_required",
-                    "reasonCode": "clarification_required",
-                    "outcomeType": "clarification_required",
-                    "clarification": result.clarification.model_dump(
-                        by_alias=True,
-                        exclude_none=True,
-                    ),
-                    "querySession": (
-                        result.query_session.model_dump(
-                            by_alias=True,
-                            exclude_none=True,
-                        )
-                        if result.query_session
-                        else None
-                    ),
-                }
-            )
-
-        if (
-            result.outcome_type == "capability_miss"
-            and result.capability_miss is not None
-        ):
-            return QueryStreamErrorEvent.model_validate(
-                {
-                    "type": "error",
-                    "error": result.response,
-                    "code": "capability_miss",
-                    "reasonCode": "capability_miss",
-                    "outcomeType": "capability_miss",
-                    "capabilityMiss": result.capability_miss.model_dump(
-                        by_alias=True,
-                        exclude_none=True,
-                    ),
-                    "querySession": (
-                        result.query_session.model_dump(
-                            by_alias=True,
-                            exclude_none=True,
-                        )
-                        if result.query_session
-                        else None
-                    ),
-                }
-            )
-
-        return None
-
     async def run(
         self,
         query: str,
-        clarification_policy: QueryClarificationPolicy | None = None,
         tools: list[str] | None = None,
         favorites_only: bool | None = None,
         answer_model_id: str | None = None,
@@ -315,7 +250,6 @@ class Query:
 
         async for event in self.stream(
             query=query,
-            clarification_policy=clarification_policy,
             tools=tools,
             favorites_only=favorites_only,
             answer_model_id=answer_model_id,
@@ -345,7 +279,6 @@ class Query:
     async def stream(
         self,
         query: str,
-        clarification_policy: QueryClarificationPolicy | None = None,
         tools: list[str] | None = None,
         favorites_only: bool | None = None,
         answer_model_id: str | None = None,
@@ -410,8 +343,6 @@ class Query:
             )
         if favorites_only is not None:
             request_body["favoritesOnly"] = favorites_only
-        if clarification_policy is not None:
-            request_body["clarificationPolicy"] = clarification_policy
         if answer_model_id is not None:
             request_body["answerModelId"] = answer_model_id
         if response_shape is not None:
@@ -494,11 +425,4 @@ class Query:
                             done_event.result.duration_ms,
                         )
                 done_event.result.developer_trace = done_trace
-                policy_error_event = self._build_policy_error_event(
-                    done_event.result,
-                    clarification_policy,
-                )
-                if policy_error_event is not None:
-                    yield policy_error_event
-                else:
-                    yield done_event
+                yield done_event
