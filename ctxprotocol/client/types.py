@@ -601,7 +601,7 @@ class ExecuteSessionResult(BaseModel):
 # from the query; this is a soft hint rather than a hard switch.
 QueryDepth = Literal["fast", "auto", "deep"]
 QueryOutcomeType = Literal["answer", "capability_miss"]
-QueryResponseShape = Literal["answer", "answer_with_evidence", "evidence_only"]
+QueryResponseShape = Literal["answer_with_evidence", "evidence_only"]
 QueryAttemptForkReason = Literal[
     "manual_fork",
     "bounded_rediscovery",
@@ -712,13 +712,14 @@ class QueryOptions(BaseModel):
         default=None,
         alias="responseShape",
         description=(
-            "Structured response mode. The runtime always produces a grounded "
-            "result (raw data + computed artifacts + provenance); this controls "
-            "whether a prose synthesis layer is added on top. "
+            "Structured response mode. Defaults to `answer_with_evidence` on the "
+            "server when omitted. The runtime always produces a grounded result "
+            "(raw data + computed artifacts + provenance); this controls whether "
+            "a prose synthesis layer is added on top. "
             "`answer_with_evidence` returns prose plus the structured grounding "
             "(chat parity); `evidence_only` returns grounding only with no prose "
             "(the agent-harness shape, with raw data + computed_artifacts + "
-            "grounding by default); `answer` is the legacy prose-only shape."
+            "grounding by default)."
         ),
     )
     include_data: bool | None = Field(

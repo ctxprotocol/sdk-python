@@ -216,7 +216,8 @@ class Query:
             tools: Optional tool IDs to use (auto-discover if not provided)
             favorites_only: Restrict auto-discovery to favorite tools for this request
             answer_model_id: Optional answer model ID for final synthesis
-            response_shape: Structured response mode for query answers
+            response_shape: Structured response mode (`answer_with_evidence` or
+                `evidence_only`; server default `answer_with_evidence`)
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces
@@ -304,7 +305,8 @@ class Query:
             tools: Optional tool IDs to use (auto-discover if not provided)
             favorites_only: Restrict auto-discovery to favorite tools for this request
             answer_model_id: Optional answer model ID for final synthesis
-            response_shape: Structured response mode for query answers
+            response_shape: Structured response mode (`answer_with_evidence` or
+                `evidence_only`; server default `answer_with_evidence`)
             include_data: Include execution data inline in the query response
             include_data_url: Persist execution data to blob and return URL
             include_developer_trace: Include machine-readable Developer Mode traces

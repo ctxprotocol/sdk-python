@@ -87,12 +87,12 @@ result = await client.tools.execute(
 print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```
 
-**Query mode** gives you a managed librarian contract — the server runs the live pipeline (`discover -> select -> iterative execute -> synthesize -> settle`) with model-aware context budgeting and can return plain answers or structured evidence packages for one flat fee:
+**Query mode** gives you a managed librarian contract — the server runs the live pipeline (`discover -> select -> iterative execute -> synthesize -> settle`) with model-aware context budgeting and returns structured evidence packages for one flat fee:
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
     answer_model_id="glm-model",  # optional: choose the final synthesis model
-    response_shape="answer_with_evidence",  # optional: answer | answer_with_evidence | evidence_only
+    response_shape="answer_with_evidence",  # optional: answer_with_evidence (default) | evidence_only
     include_data_url=True,     # optional: persist full execution data to blob
     include_developer_trace=True,  # optional: include runtime developer trace
 )
@@ -118,9 +118,8 @@ print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 
 `response_shape` options:
 
-- `answer`: backward-compatible prose answer
-- `answer_with_evidence`: prose plus `summary`, `evidence`, `artifacts`, `freshness`, `confidence`, `usage`, `outcome`, and `controller`
-- `evidence_only`: machine-friendly summary plus the same evidence package for downstream agents
+- `answer_with_evidence` (default): prose plus `summary`, `evidence`, `artifacts`, `freshness`, `confidence`, `usage`, `outcome`, and `controller`
+- `evidence_only`: raw fetched data, computed artifacts, and provenance for downstream agents (no prose synthesis)
 
 Premium wedge answers can also expose `evidence.market_intelligence`, `view.rows`, `view.columns`, and the top-level controller fields `stop_reason`, `issue_class`, and `actions_taken`.
 
@@ -262,7 +261,7 @@ closed = await client.tools.close_session("sess_123")
 
 #### `client.query.run(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
-Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> iterative execute -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer`, `answer_with_evidence`, or `evidence_only`).
+Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> iterative execute -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer_with_evidence` or `evidence_only`, default `answer_with_evidence`).
 
 `client.query.run()` buffers the same SSE transport used by `client.query.stream()` and returns the final `done` result. This keeps Python aligned with the TypeScript SDK and the live query runtime.
 
