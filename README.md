@@ -91,7 +91,7 @@ print(result.session)  # method_price, spent, remaining, max_spend, ...
 ```python
 answer = await client.query.run(
     query="What are the top whale movements on Base?",
-    answer_model_id="glm-model",  # optional: choose the final synthesis model
+    agent_model_id="kimi-k2.6-model",  # optional: choose the main librarian agent model
     response_shape="answer_with_evidence",  # optional: answer_with_evidence (default) | evidence_only
     include_data_url=True,     # optional: persist full execution data to blob
     include_developer_trace=True,  # optional: include runtime developer trace
@@ -109,6 +109,15 @@ print(
     else None
 )
 print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
+```
+
+To see valid model slugs without guessing:
+
+```python
+from ctxprotocol import AGENT_MODEL_IDS, DEFAULT_AGENT_MODEL_ID
+
+print(DEFAULT_AGENT_MODEL_ID)  # "kimi-k2.6-model"
+print(AGENT_MODEL_IDS)         # Supported agent_model_id values
 ```
 
 > Mixed listings are first-class: one listing can expose methods to both surfaces. Methods without `_meta.pricing.executeUsd` remain query-only until priced.
@@ -259,7 +268,7 @@ closed = await client.tools.close_session("sess_123")
 
 ### Query (Pay-Per-Response)
 
-#### `client.query.run(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
+#### `client.query.run(query, tools?, agent_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
 Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> iterative execute -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer_with_evidence` or `evidence_only`, default `answer_with_evidence`).
 
@@ -279,7 +288,7 @@ answer = await client.query.run("What are the top whale movements on Base?")
 answer = await client.query.run(
     query="Analyze whale activity on Base",
     tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
-    answer_model_id="kimi-model-thinking",   # optional final synthesis model
+    agent_model_id="kimi-k2.6-model",        # optional main librarian agent model
     include_data=True,                       # optional: include execution data inline
     include_data_url=True,                   # optional: include blob URL for full data
     include_developer_trace=True,            # optional: include Developer Mode trace
@@ -302,7 +311,7 @@ print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 
 When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
 
-#### `client.query.stream(query, tools?, answer_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
+#### `client.query.stream(query, tools?, agent_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
 Same as `run()` but streams events in real-time via SSE.
 

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from ctxprotocol.client.types import (
     ContextError,
+    AgentModelId,
     QueryAttemptReference,
     QueryDeveloperTrace,
     QueryForkReference,
@@ -193,7 +194,7 @@ class Query:
         query: str,
         tools: list[str] | None = None,
         favorites_only: bool | None = None,
-        answer_model_id: str | None = None,
+        agent_model_id: AgentModelId | str | None = None,
         response_shape: QueryResponseShape | None = None,
         include_data: bool | None = None,
         include_data_url: bool | None = None,
@@ -215,7 +216,7 @@ class Query:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
             favorites_only: Restrict auto-discovery to favorite tools for this request
-            answer_model_id: Optional answer model ID for final synthesis
+            agent_model_id: Optional model ID for the main librarian agent loop
             response_shape: Structured response mode (`answer_with_evidence` or
                 `evidence_only`; server default `answer_with_evidence`)
             include_data: Include execution data inline in the query response
@@ -253,7 +254,7 @@ class Query:
             query=query,
             tools=tools,
             favorites_only=favorites_only,
-            answer_model_id=answer_model_id,
+            agent_model_id=agent_model_id,
             response_shape=response_shape,
             include_data=include_data,
             include_data_url=include_data_url,
@@ -282,7 +283,7 @@ class Query:
         query: str,
         tools: list[str] | None = None,
         favorites_only: bool | None = None,
-        answer_model_id: str | None = None,
+        agent_model_id: AgentModelId | str | None = None,
         response_shape: QueryResponseShape | None = None,
         include_data: bool | None = None,
         include_data_url: bool | None = None,
@@ -304,7 +305,7 @@ class Query:
             query: The natural-language question to answer
             tools: Optional tool IDs to use (auto-discover if not provided)
             favorites_only: Restrict auto-discovery to favorite tools for this request
-            answer_model_id: Optional answer model ID for final synthesis
+            agent_model_id: Optional model ID for the main librarian agent loop
             response_shape: Structured response mode (`answer_with_evidence` or
                 `evidence_only`; server default `answer_with_evidence`)
             include_data: Include execution data inline in the query response
@@ -345,8 +346,8 @@ class Query:
             )
         if favorites_only is not None:
             request_body["favoritesOnly"] = favorites_only
-        if answer_model_id is not None:
-            request_body["answerModelId"] = answer_model_id
+        if agent_model_id is not None:
+            request_body["agentModelId"] = agent_model_id
         if response_shape is not None:
             request_body["responseShape"] = response_shape
         if include_data is not None:

@@ -10,9 +10,11 @@ from ctxprotocol.client.resources.discovery import Discovery
 from ctxprotocol.client.resources.query import Query
 from ctxprotocol.client.resources.tools import Tools
 from ctxprotocol.client.types import (
+    AGENT_MODEL_IDS,
     ContextClientOptions,
     ContextError,
     ContextErrorCode,
+    DEFAULT_AGENT_MODEL_ID,
     ExecuteApiErrorResponse,
     ExecuteApiSuccessResponse,
     ExecuteMethodInfo,
@@ -64,6 +66,7 @@ from ctxprotocol.client.types import (
     SearchResponse,
     Tool,
     ToolInfo,
+    AgentModelId,
 )
 
 __all__ = [
@@ -76,6 +79,9 @@ __all__ = [
     "Query",
     # Types
     "ContextClientOptions",
+    "AGENT_MODEL_IDS",
+    "DEFAULT_AGENT_MODEL_ID",
+    "AgentModelId",
     "Tool",
     "McpTool",
     "McpToolMeta",

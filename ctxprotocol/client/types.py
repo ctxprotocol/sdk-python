@@ -43,6 +43,33 @@ McpToolSurface = Literal["answer", "execute", "both"]
 McpToolLatencyClass = Literal["instant", "fast", "slow", "streaming"]
 ExecuteSessionStatus = Literal["open", "closed", "expired"]
 SuggestedPromptSource = Literal["contributor", "platform", "sdk"]
+DEFAULT_AGENT_MODEL_ID = "kimi-k2.6-model"
+AGENT_MODEL_IDS = (
+    "kimi-k2.6-model",
+    "deepseek-v4-pro-model",
+    "deepseek-v4-flash-model",
+    "gemini-3.5-flash-model",
+    "gemini-flash-model",
+    "gemini-lite-model",
+    "minimax-m3-model",
+    "qwen-3.7-plus-model",
+    "qwen-3.7-max-model",
+    "gpt-5.5-model",
+    "claude-opus-model",
+)
+AgentModelId = Literal[
+    "kimi-k2.6-model",
+    "deepseek-v4-pro-model",
+    "deepseek-v4-flash-model",
+    "gemini-3.5-flash-model",
+    "gemini-flash-model",
+    "gemini-lite-model",
+    "minimax-m3-model",
+    "qwen-3.7-plus-model",
+    "qwen-3.7-max-model",
+    "gpt-5.5-model",
+    "claude-opus-model",
+]
 
 
 class McpToolRateLimitHints(BaseModel):
@@ -674,7 +701,7 @@ class QueryOptions(BaseModel):
     Attributes:
         query: The natural-language question to answer
         tools: Optional tool IDs to use (auto-discover if not provided)
-        answer_model_id: Optional answer model ID for final synthesis
+        agent_model_id: Optional model ID for the main librarian agent loop
         include_data: Include execution data inline in the query response
         include_data_url: Persist execution data to blob and return URL
         include_developer_trace: Include machine-readable developer runtime traces
@@ -703,10 +730,14 @@ class QueryOptions(BaseModel):
             "Ignored when explicit tools are provided."
         ),
     )
-    answer_model_id: str | None = Field(
+    agent_model_id: AgentModelId | str | None = Field(
         default=None,
-        alias="answerModelId",
-        description="Optional answer model ID for final synthesis",
+        alias="agentModelId",
+        description=(
+            "Optional model ID for the main librarian agent loop. Controls the "
+            "merged iterative execution + final response stage; internal tool "
+            "selection remains managed by the server."
+        ),
     )
     response_shape: QueryResponseShape | None = Field(
         default=None,

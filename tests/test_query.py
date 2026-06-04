@@ -468,7 +468,7 @@ class TestQueryRun:
             mock_stream.return_value = _make_done_stream_response(success_with_data)
             result = await client.query.run(
                 query="Analyze whale activity",
-                answer_model_id="glm-model",
+                agent_model_id="kimi-k2.6-model",
                 response_shape="answer_with_evidence",
                 include_data=True,
                 include_data_url=True,
@@ -482,7 +482,7 @@ class TestQueryRun:
                 "query": "Analyze whale activity",
                 "tools": None,
                 "stream": True,
-                "answerModelId": "glm-model",
+                "agentModelId": "kimi-k2.6-model",
                 "responseShape": "answer_with_evidence",
                 "includeData": True,
                 "includeDataUrl": True,
@@ -571,7 +571,9 @@ class TestQueryRun:
     def test_query_options_supports_public_aliases(self) -> None:
         """QueryOptions accepts supported public aliases."""
         trace_alias = QueryOptions(query="test", includeDeveloperTrace=True)
-        answer_model_alias = QueryOptions(query="test", answerModelId="glm-model")
+        agent_model_alias = QueryOptions(
+            query="test", agentModelId="kimi-k2.6-model"
+        )
         resume_alias = QueryOptions(
             query="test",
             resumeFrom={
@@ -596,10 +598,10 @@ class TestQueryRun:
         assert (
             trace_alias.model_dump(by_alias=True)["includeDeveloperTrace"] is True
         )
-        assert answer_model_alias.answer_model_id == "glm-model"
+        assert agent_model_alias.agent_model_id == "kimi-k2.6-model"
         assert (
-            answer_model_alias.model_dump(by_alias=True)["answerModelId"]
-            == "glm-model"
+            agent_model_alias.model_dump(by_alias=True)["agentModelId"]
+            == "kimi-k2.6-model"
         )
         assert response_shape_alias.response_shape == "evidence_only"
         assert (
@@ -1216,7 +1218,7 @@ class TestQueryStream:
             events = []
             async for event in client.query.stream(
                 query="test",
-                answer_model_id="claude-sonnet-model",
+                agent_model_id="claude-sonnet-model",
                 include_data=True,
                 include_data_url=True,
                 include_developer_trace=True,
@@ -1225,7 +1227,7 @@ class TestQueryStream:
 
         call_kwargs = mock_stream.call_args
         assert (
-            call_kwargs[1]["json_body"]["answerModelId"]
+            call_kwargs[1]["json_body"]["agentModelId"]
             == "claude-sonnet-model"
         )
         assert call_kwargs[1]["json_body"]["includeData"] is True

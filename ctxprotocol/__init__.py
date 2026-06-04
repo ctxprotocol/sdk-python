@@ -31,7 +31,7 @@ Example:
 For more information, visit: https://ctxprotocol.com
 """
 
-__version__ = "0.15.0"
+__version__ = "0.17.0"
 
 # Re-export everything from client module
 from ctxprotocol.client import (
@@ -43,8 +43,10 @@ from ctxprotocol.client import (
     Tools,
 )
 from ctxprotocol.client.types import (
+    AGENT_MODEL_IDS,
     ContextClientOptions,
     ContextErrorCode,
+    DEFAULT_AGENT_MODEL_ID,
     ExecuteApiErrorResponse,
     ExecuteApiSuccessResponse,
     ExecuteMethodInfo,
@@ -83,6 +85,7 @@ from ctxprotocol.client.types import (
     SearchResponse,
     Tool,
     ToolInfo,
+    AgentModelId,
 )
 
 # Context types for portfolio injection
@@ -178,6 +181,9 @@ __all__ = [
     "ExecuteApiErrorResponse",
     "ExecuteSessionApiSuccessResponse",
     "ToolInfo",
+    "AGENT_MODEL_IDS",
+    "DEFAULT_AGENT_MODEL_ID",
+    "AgentModelId",
     # Query types (pay-per-response)
     "QueryOptions",
     "QueryResult",
