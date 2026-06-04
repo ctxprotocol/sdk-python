@@ -128,7 +128,7 @@ print(AGENT_MODEL_IDS)         # Supported agent_model_id values
 `response_shape` options:
 
 - `answer_with_evidence` (default): prose plus `summary`, `evidence`, `artifacts`, `freshness`, `confidence`, `usage`, `outcome`, and `controller`
-- `evidence_only`: raw fetched data, computed artifacts, and provenance for downstream agents (no prose synthesis)
+- `evidence_only`: bounded evidence, computed artifacts, and full-data references for downstream agents (no prose synthesis)
 
 Premium wedge answers can also expose `evidence.market_intelligence`, `view.rows`, `view.columns`, and the top-level controller fields `stop_reason`, `issue_class`, and `actions_taken`.
 
@@ -289,7 +289,7 @@ answer = await client.query.run(
     query="Analyze whale activity on Base",
     tools=["tool-uuid-1", "tool-uuid-2"],  # optional — auto-discover if omitted
     agent_model_id="kimi-k2.6-model",        # optional main librarian agent model
-    include_data=True,                       # optional: include execution data inline
+    include_data=True,                       # optional: include bounded execution data inline
     include_data_url=True,                   # optional: include blob URL for full data
     include_developer_trace=True,            # optional: include Developer Mode trace
 )
@@ -298,7 +298,7 @@ print(answer.response)      # response text or summary
 print(answer.tools_used)    # [QueryToolUsage(id, name, skill_calls)]
 print(answer.cost)          # QueryCost(model_cost_usd, tool_cost_usd, total_cost_usd)
 print(answer.duration_ms)   # Total time
-print(answer.data)          # Optional execution data (when include_data=True)
+print(answer.data)          # Optional bounded data or truncation preview
 print(answer.data_url)      # Optional blob URL (when include_data_url=True)
 print(answer.developer_trace.summary if answer.developer_trace else None)
 print(
@@ -309,7 +309,7 @@ print(
 print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 ```
 
-When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` and `include_data_url` continue to reference the same canonical dataset used for synthesis.
+When retrieval-first synthesis rollout is enabled server-side, full-data or truncation-sensitive query requests can switch to retrieval-first context assembly using private stage artifacts and canonical execution data slices. `include_data` returns a bounded inline preview when needed, and `include_data_url`/`artifacts.canonical_data_ref` reference the same canonical dataset used for synthesis.
 
 #### `client.query.stream(query, tools?, agent_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 

@@ -745,21 +745,21 @@ class QueryOptions(BaseModel):
         description=(
             "Structured response mode. Defaults to `answer_with_evidence` on the "
             "server when omitted. The runtime always produces a grounded result "
-            "(raw data + computed artifacts + provenance); this controls whether "
-            "a prose synthesis layer is added on top. "
+            "(bounded evidence + computed artifacts + full-data references); "
+            "this controls whether a prose synthesis layer is added on top. "
             "`answer_with_evidence` returns prose plus the structured grounding "
             "(chat parity); `evidence_only` returns grounding only with no prose "
-            "(the agent-harness shape, with raw data + computed_artifacts + "
-            "grounding by default)."
+            "(the agent-harness shape, with bounded evidence, computed_artifacts, "
+            "and data_url/canonical_data_ref references)."
         ),
     )
     include_data: bool | None = Field(
         default=None,
         alias="includeData",
         description=(
-            "Include raw execution data inline. Defaults to true for "
-            "response_shape `evidence_only` (its primary payload is the raw "
-            "fetched data); false otherwise. Set explicitly to override."
+            "Include bounded execution data inline. Defaults to false for every "
+            "response_shape. Large payloads are returned as a preview object "
+            "with fullData.dataUrl/canonicalDataRef instead of unbounded raw rows."
         ),
     )
     include_data_url: bool | None = Field(
@@ -1703,7 +1703,7 @@ class QueryResult(BaseModel):
         tools_used: Tools that were used to answer the query
         cost: Cost breakdown
         duration_ms: Total duration in milliseconds
-        data: Raw execution data (default for evidence_only; else when include_data is enabled)
+        data: Bounded execution data when include_data is enabled
         data_url: Optional blob URL for execution data (when include_data_url is enabled)
         computed_artifacts: Optional chart artifacts emitted by code interpreter
         developer_trace: Optional machine-readable Developer Mode trace
@@ -1721,9 +1721,9 @@ class QueryResult(BaseModel):
     data: Any | None = Field(
         default=None,
         description=(
-            "Raw execution data from tools. Returned by default for "
-            "response_shape `evidence_only` (its primary payload); otherwise "
-            "only when include_data is true."
+            "Bounded execution data from tools. Returned only when include_data "
+            "is true. Small payloads may be direct data; large payloads are a "
+            "truncation object with preview and fullData references."
         ),
     )
     data_url: str | None = Field(
