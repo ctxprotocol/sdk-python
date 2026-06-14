@@ -1466,3 +1466,104 @@ class TestQueryStream:
                 events.append(event)
 
         assert len(events) == 1
+
+
+class TestQueryJobs:
+    """Tests for durable async query job helpers."""
+
+    async def test_start_creates_query_job(self) -> None:
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        payload = {
+            "status": "running",
+            "jobId": "11111111-1111-4111-8111-111111111111",
+            "pollingTool": "context_query_status",
+            "message": "running",
+            "progress": None,
+            "querySession": None,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:00:00.000Z",
+        }
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = payload
+            job = await client.query.start(
+                query="long query",
+                response_shape="evidence_only",
+                include_data_url=True,
+                idempotency_key="21118fda-33be-4d66-8df5-0e50b3371f54",
+            )
+
+        assert job.job_id == "11111111-1111-4111-8111-111111111111"
+        mock_fetch.assert_called_once_with(
+            "/api/v1/query/jobs",
+            method="POST",
+            json_body={
+                "query": "long query",
+                "tools": None,
+                "stream": False,
+                "responseShape": "evidence_only",
+                "includeDataUrl": True,
+            },
+            extra_headers={
+                "Idempotency-Key": "21118fda-33be-4d66-8df5-0e50b3371f54",
+            },
+        )
+
+    async def test_get_status_fetches_query_job(self) -> None:
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        payload = {
+            "status": "completed",
+            "jobId": "11111111-1111-4111-8111-111111111111",
+            "progress": None,
+            "querySession": None,
+            "result": MOCK_SUCCESS_RESPONSE,
+            "error": None,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:01:00.000Z",
+            "completedAt": "2026-06-14T00:01:00.000Z",
+        }
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = payload
+            status = await client.query.get_status(
+                "11111111-1111-4111-8111-111111111111"
+            )
+
+        assert status.status == "completed"
+        assert status.result is not None
+        assert status.result.response == MOCK_SUCCESS_RESPONSE["response"]
+        mock_fetch.assert_called_once_with(
+            "/api/v1/query/jobs/11111111-1111-4111-8111-111111111111"
+        )
+
+    async def test_poll_waits_until_query_job_completes(self) -> None:
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        running_payload = {
+            "status": "running",
+            "jobId": "11111111-1111-4111-8111-111111111111",
+            "progress": None,
+            "querySession": None,
+            "result": None,
+            "error": None,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:00:30.000Z",
+            "completedAt": None,
+        }
+        completed_payload = {
+            **running_payload,
+            "status": "completed",
+            "result": MOCK_SUCCESS_RESPONSE,
+            "updatedAt": "2026-06-14T00:01:00.000Z",
+            "completedAt": "2026-06-14T00:01:00.000Z",
+        }
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.side_effect = [running_payload, completed_payload]
+            status = await client.query.poll(
+                "11111111-1111-4111-8111-111111111111",
+                interval_ms=1,
+                timeout_ms=1000,
+            )
+
+        assert status.status == "completed"
+        assert mock_fetch.await_count == 2

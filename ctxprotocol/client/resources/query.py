@@ -9,6 +9,7 @@ execute -> synthesize -> settle) and AI synthesis — all for one flat fee.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
@@ -18,6 +19,8 @@ from ctxprotocol.client.types import (
     QueryAttemptReference,
     QueryDeveloperTrace,
     QueryForkReference,
+    QueryJobStartResult,
+    QueryJobStatusResult,
     QueryResponseShape,
     QueryResult,
     QueryStreamDeveloperTraceEvent,
@@ -42,6 +45,52 @@ class Query:
             client: The parent ContextClient instance
         """
         self._client = client
+
+    @staticmethod
+    def _build_request_body(
+        query: str,
+        tools: list[str] | None = None,
+        favorites_only: bool | None = None,
+        agent_model_id: AgentModelId | str | None = None,
+        response_shape: QueryResponseShape | None = None,
+        include_data: bool | None = None,
+        include_data_url: bool | None = None,
+        include_developer_trace: bool | None = None,
+        resume_from: QueryAttemptReference | dict[str, Any] | None = None,
+        fork_from: QueryForkReference | dict[str, Any] | None = None,
+        stream: bool | None = None,
+    ) -> dict[str, Any]:
+        request_body: dict[str, Any] = {
+            "query": query,
+            "tools": tools,
+        }
+        if stream is not None:
+            request_body["stream"] = stream
+        if resume_from is not None:
+            request_body["resumeFrom"] = (
+                resume_from.model_dump(by_alias=True, exclude_none=True)
+                if isinstance(resume_from, QueryAttemptReference)
+                else resume_from
+            )
+        if fork_from is not None:
+            request_body["forkFrom"] = (
+                fork_from.model_dump(by_alias=True, exclude_none=True)
+                if isinstance(fork_from, QueryForkReference)
+                else fork_from
+            )
+        if favorites_only is not None:
+            request_body["favoritesOnly"] = favorites_only
+        if agent_model_id is not None:
+            request_body["agentModelId"] = agent_model_id
+        if response_shape is not None:
+            request_body["responseShape"] = response_shape
+        if include_data is not None:
+            request_body["includeData"] = include_data
+        if include_data_url is not None:
+            request_body["includeDataUrl"] = include_data_url
+        if include_developer_trace is not None:
+            request_body["includeDeveloperTrace"] = include_developer_trace
+        return request_body
 
     @staticmethod
     def _merge_developer_trace(
@@ -277,6 +326,71 @@ class Query:
             )
 
         raise ContextError("Streaming query ended before done event")
+
+    async def start(
+        self,
+        query: str,
+        tools: list[str] | None = None,
+        favorites_only: bool | None = None,
+        agent_model_id: AgentModelId | str | None = None,
+        response_shape: QueryResponseShape | None = None,
+        include_data: bool | None = None,
+        include_data_url: bool | None = None,
+        include_developer_trace: bool | None = None,
+        resume_from: QueryAttemptReference | dict[str, Any] | None = None,
+        fork_from: QueryForkReference | dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> QueryJobStartResult:
+        """Start a durable async query job and return its job id immediately."""
+        request_body = self._build_request_body(
+            query=query,
+            tools=tools,
+            favorites_only=favorites_only,
+            agent_model_id=agent_model_id,
+            response_shape=response_shape,
+            include_data=include_data,
+            include_data_url=include_data_url,
+            include_developer_trace=include_developer_trace,
+            resume_from=resume_from,
+            fork_from=fork_from,
+            stream=False,
+        )
+        response = await self._client.fetch(
+            "/api/v1/query/jobs",
+            method="POST",
+            json_body=request_body,
+            extra_headers=(
+                {"Idempotency-Key": idempotency_key}
+                if idempotency_key
+                else None
+            ),
+        )
+        return QueryJobStartResult.model_validate(response)
+
+    async def get_status(self, job_id: str) -> QueryJobStatusResult:
+        """Fetch the current status for a durable async query job."""
+        response = await self._client.fetch(f"/api/v1/query/jobs/{job_id}")
+        return QueryJobStatusResult.model_validate(response)
+
+    async def poll(
+        self,
+        job_id: str,
+        interval_ms: int = 2000,
+        timeout_ms: int = 15 * 60_000,
+    ) -> QueryJobStatusResult:
+        """Poll a durable async query job until completion or failure."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_ms / 1000
+
+        while loop.time() <= deadline:
+            status = await self.get_status(job_id)
+            if status.status == "completed":
+                return status
+            if status.status == "failed":
+                raise ContextError(status.error or "Context query job failed")
+            await asyncio.sleep(interval_ms / 1000)
+
+        raise ContextError(f"Context query job polling timed out after {timeout_ms}ms")
 
     async def stream(
         self,

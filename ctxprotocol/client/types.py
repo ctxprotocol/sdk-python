@@ -1890,6 +1890,40 @@ class QueryApiSuccessResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+QueryJobStatus = Literal["queued", "running", "completed", "failed"]
+
+
+class QueryJobStartResult(BaseModel):
+    """Response from starting a durable async query job."""
+
+    status: QueryJobStatus
+    job_id: str = Field(..., alias="jobId")
+    polling_tool: str | None = Field(default=None, alias="pollingTool")
+    message: str | None = None
+    progress: Any | None = None
+    query_session: Any | None = Field(default=None, alias="querySession")
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class QueryJobStatusResult(BaseModel):
+    """Current status for a durable async query job."""
+
+    status: QueryJobStatus
+    job_id: str = Field(..., alias="jobId")
+    progress: Any | None = None
+    query_session: Any | None = Field(default=None, alias="querySession")
+    result: QueryResult | None = None
+    error: str | None = None
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+
+    model_config = {"populate_by_name": True}
+
+
 class QueryStreamToolStatusEvent(BaseModel):
     """Emitted when a tool starts or changes execution status."""
 

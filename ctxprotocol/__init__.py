@@ -31,7 +31,7 @@ Example:
 For more information, visit: https://ctxprotocol.com
 """
 
-__version__ = "0.17.0"
+__version__ = "0.18.0"
 
 # Re-export everything from client module
 from ctxprotocol.client import (
@@ -70,6 +70,9 @@ from ctxprotocol.client.types import (
     QueryDeveloperTraceSummary,
     QueryDeveloperTraceStep,
     QueryDeveloperTraceToolRef,
+    QueryJobStartResult,
+    QueryJobStatus,
+    QueryJobStatusResult,
     QueryOrchestrationMetrics,
     QueryDeveloperTraceLoopInfo,
     QueryStreamDeveloperTraceEvent,
@@ -195,6 +198,9 @@ __all__ = [
     "QueryDeveloperTraceSummary",
     "QueryDeveloperTraceStep",
     "QueryDeveloperTraceToolRef",
+    "QueryJobStartResult",
+    "QueryJobStatus",
+    "QueryJobStatusResult",
     "QueryOrchestrationMetrics",
     "QueryDeveloperTraceLoopInfo",
     "QueryApiSuccessResponse",

@@ -111,6 +111,24 @@ print(
 print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 ```
 
+For long-running questions, start a durable job and poll until it completes:
+
+```python
+job = await client.query.start(
+    query="Build a chart-ready dataset of Base whale movements over the last 30 days",
+    response_shape="evidence_only",
+    include_data_url=True,
+)
+
+completed = await client.query.poll(
+    job.job_id,
+    interval_ms=2000,
+    timeout_ms=15 * 60_000,
+)
+
+print(completed.result.data_url if completed.result else None)
+```
+
 To see valid model slugs without guessing:
 
 ```python
