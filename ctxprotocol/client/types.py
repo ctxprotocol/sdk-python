@@ -43,8 +43,9 @@ McpToolSurface = Literal["answer", "execute", "both"]
 McpToolLatencyClass = Literal["instant", "fast", "slow", "streaming"]
 ExecuteSessionStatus = Literal["open", "closed", "expired"]
 SuggestedPromptSource = Literal["contributor", "platform", "sdk"]
-DEFAULT_AGENT_MODEL_ID = "kimi-k2.6-model"
+DEFAULT_AGENT_MODEL_ID = "glm-5.2-model"
 AGENT_MODEL_IDS = (
+    "glm-5.2-model",
     "kimi-k2.6-model",
     "deepseek-v4-pro-model",
     "deepseek-v4-flash-model",
@@ -57,6 +58,7 @@ AGENT_MODEL_IDS = (
     "claude-opus-model",
 )
 AgentModelId = Literal[
+    "glm-5.2-model",
     "kimi-k2.6-model",
     "deepseek-v4-pro-model",
     "deepseek-v4-flash-model",
