@@ -134,7 +134,7 @@ To see valid model slugs without guessing:
 ```python
 from ctxprotocol import AGENT_MODEL_IDS, DEFAULT_AGENT_MODEL_ID
 
-print(DEFAULT_AGENT_MODEL_ID)  # "glm-5.2-model"
+print(DEFAULT_AGENT_MODEL_ID)  # "kimi-k2.6-model"
 print(AGENT_MODEL_IDS)         # Supported agent_model_id values
 ```
 
