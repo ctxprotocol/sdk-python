@@ -6,7 +6,7 @@ This module contains all Pydantic models and type definitions used by the client
 
 from __future__ import annotations
 
-from typing import Any, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -929,7 +929,31 @@ class QueryChartArtifact(BaseModel):
     title: str | None = None
 
 
-QueryComputedArtifact = QueryChartArtifact
+class QueryImageArtifact(BaseModel):
+    """Rendered image artifact (e.g. a server-rendered chart PNG).
+
+    Emitted by the code interpreter alongside or instead of the structured
+    ``chart`` spec. ``url`` points at a hosted, already-rendered image so
+    consumers that cannot render a chart spec (image-first surfaces such as
+    social posting) can attach it directly.
+    """
+
+    kind: Literal["image"]
+    url: str
+    alt: str | None = None
+    title: str | None = None
+    content_hash: str | None = Field(default=None, alias="contentHash")
+    bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+QueryComputedArtifact = Annotated[
+    Union[QueryChartArtifact, QueryImageArtifact],
+    Field(discriminator="kind"),
+]
 
 
 class QueryToolCallFailureSample(BaseModel):

@@ -897,6 +897,41 @@ class TestQueryRun:
         assert mixed_axis.spec.series[1].y_axis == "right"
         assert mixed_axis.spec.series[1].satisfies == "volume"
 
+    async def test_parses_rendered_image_artifact(self) -> None:
+        """Rendered image artifacts (kind: image) deserialize without error."""
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        response = {
+            **MOCK_SUCCESS_RESPONSE,
+            "computedArtifacts": [
+                {
+                    "kind": "image",
+                    "url": "https://blob.example.com/charts/abc123.png",
+                    "alt": "Sector ETF YTD normalized performance chart",
+                    "title": "Sector ETF YTD Performance",
+                    "contentHash": "abc123",
+                    "bytes": 320749,
+                    "width": 1926,
+                    "height": 1030,
+                },
+            ],
+        }
+        with patch.object(
+            client, "fetch_stream", new_callable=AsyncMock
+        ) as mock_stream:
+            mock_stream.return_value = _make_done_stream_response(response)
+            result = await client.query.run("Render a chart image")
+
+        assert result.computed_artifacts is not None
+        assert len(result.computed_artifacts) == 1
+        image = result.computed_artifacts[0]
+        assert image.kind == "image"
+        assert image.url == "https://blob.example.com/charts/abc123.png"
+        assert image.title == "Sector ETF YTD Performance"
+        assert image.content_hash == "abc123"
+        assert image.bytes == 320749
+        assert image.width == 1926
+        assert image.height == 1030
+
     async def test_parses_shared_ungrounded_capability_miss_fixture(self) -> None:
         """Ungrounded runtime outcomes deserialize as capability_miss."""
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
