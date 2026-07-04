@@ -420,7 +420,6 @@ class TestQueryRun:
             method="POST",
             json_body={
                 "query": "What are the top whale movements?",
-                "tools": None,
                 "stream": True,
             },
             extra_headers=None,
@@ -480,7 +479,6 @@ class TestQueryRun:
             method="POST",
             json_body={
                 "query": "Analyze whale activity",
-                "tools": None,
                 "stream": True,
                 "agentModelId": "kimi-k2.6-model",
                 "responseShape": "answer_with_evidence",
@@ -1091,7 +1089,6 @@ class TestQueryStream:
             method="POST",
             json_body={
                 "query": "What are whale movements?",
-                "tools": None,
                 "stream": True,
             },
             extra_headers=None,
@@ -1534,7 +1531,6 @@ class TestQueryJobs:
             method="POST",
             json_body={
                 "query": "long query",
-                "tools": None,
                 "stream": False,
                 "responseShape": "evidence_only",
                 "includeDataUrl": True,
@@ -1543,6 +1539,39 @@ class TestQueryJobs:
                 "Idempotency-Key": "21118fda-33be-4d66-8df5-0e50b3371f54",
             },
         )
+
+    async def test_start_omits_null_optional_fields(self) -> None:
+        """Regression: optional fields must be absent (not JSON null) in the job body.
+
+        The /api/v1/query/jobs endpoint validates the body with a Zod schema whose
+        optional fields accept `undefined`/absent but reject `null`. Sending
+        `"tools": null` (as the SDK previously did) made query.start() 400 with
+        "Invalid query job request". Optional fields must be omitted when unset,
+        matching the TS SDK (JSON.stringify drops undefined keys).
+        """
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        payload = {
+            "status": "running",
+            "jobId": "11111111-1111-4111-8111-111111111111",
+            "pollingTool": "context_query_status",
+            "message": "running",
+            "progress": None,
+            "querySession": None,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:00:00.000Z",
+        }
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = payload
+            await client.query.start(query="long query")
+
+        body = mock_fetch.call_args.kwargs["json_body"]
+        # No optional field may serialize to JSON null.
+        assert all(value is not None for value in body.values()), body
+        # tools specifically must be omitted when not supplied (was the 400 trigger).
+        assert "tools" not in body, body
+        # query is always present and non-null.
+        assert body["query"] == "long query"
 
     async def test_get_status_fetches_query_job(self) -> None:
         client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")

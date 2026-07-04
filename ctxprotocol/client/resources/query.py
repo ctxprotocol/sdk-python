@@ -62,8 +62,9 @@ class Query:
     ) -> dict[str, Any]:
         request_body: dict[str, Any] = {
             "query": query,
-            "tools": tools,
         }
+        if tools is not None:
+            request_body["tools"] = tools
         if stream is not None:
             request_body["stream"] = stream
         if resume_from is not None:
@@ -443,9 +444,10 @@ class Query:
         """
         request_body: dict[str, Any] = {
             "query": query,
-            "tools": tools,
             "stream": True,
         }
+        if tools is not None:
+            request_body["tools"] = tools
         if resume_from is not None:
             request_body["resumeFrom"] = (
                 resume_from.model_dump(by_alias=True, exclude_none=True)
