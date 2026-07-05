@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -1631,3 +1631,43 @@ class TestQueryJobs:
 
         assert status.status == "completed"
         assert mock_fetch.await_count == 2
+
+    async def test_run_or_poll_returns_completed_query_result(self) -> None:
+        client = ContextClient(api_key="ctx_test_key_1234567890abcdef12345678")
+        start_payload = {
+            "status": "running",
+            "jobId": "11111111-1111-4111-8111-111111111111",
+            "pollingTool": "context_query_poll",
+            "message": "running",
+            "progress": None,
+            "querySession": None,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:00:00.000Z",
+        }
+        completed_payload = {
+            "status": "completed",
+            "jobId": "11111111-1111-4111-8111-111111111111",
+            "progress": None,
+            "querySession": None,
+            "result": MOCK_SUCCESS_RESPONSE,
+            "error": None,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:01:00.000Z",
+            "completedAt": "2026-06-14T00:01:00.000Z",
+        }
+
+        with patch.object(client, "fetch", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.side_effect = [start_payload, completed_payload]
+            result = await client.query.run_or_poll(
+                "Analyze whale activity",
+                interval_ms=1,
+                timeout_ms=1000,
+            )
+
+        assert result.response == MOCK_SUCCESS_RESPONSE["response"]
+        assert mock_fetch.await_count == 2
+        assert mock_fetch.await_args_list[0].args[0] == "/api/v1/query/jobs"
+        assert (
+            mock_fetch.await_args_list[1].args[0]
+            == "/api/v1/query/jobs/11111111-1111-4111-8111-111111111111"
+        )

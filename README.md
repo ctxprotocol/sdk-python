@@ -111,7 +111,25 @@ print(
 print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 ```
 
-For long-running questions, start a durable job and poll until it completes:
+For long-running questions from LLM agents, use `run_or_poll()` so the entire wait happens inside one SDK call (one model turn):
+
+```python
+answer = await client.query.run_or_poll(
+    query="Build a chart-ready dataset of Base whale movements over the last 30 days",
+    response_shape="evidence_only",
+    include_data_url=True,
+)
+
+print(answer.data_url)
+```
+
+The defaults are already agent-friendly: the SDK checks status every 5 seconds
+over plain HTTP (this costs no model tokens — token cost comes from model
+*turns*, not HTTP polls) and waits up to 31 minutes, slightly beyond the
+hosted 1800-second compute ceiling that bounds every query path. Treat a
+failed job-window status as terminal and start a fresh query.
+
+For programmatic workflows that want the job handle, start a durable job and poll until it completes:
 
 ```python
 job = await client.query.start(
@@ -120,11 +138,7 @@ job = await client.query.start(
     include_data_url=True,
 )
 
-completed = await client.query.poll(
-    job.job_id,
-    interval_ms=2000,
-    timeout_ms=15 * 60_000,
-)
+completed = await client.query.poll(job.job_id)
 
 print(completed.result.data_url if completed.result else None)
 ```

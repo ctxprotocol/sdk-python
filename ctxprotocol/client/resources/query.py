@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, Any
 
 from ctxprotocol.client.types import (
-    ContextError,
     AgentModelId,
+    ContextError,
     QueryAttemptReference,
     QueryDeveloperTrace,
     QueryForkReference,
@@ -33,6 +34,18 @@ from ctxprotocol.client.types import (
 
 if TYPE_CHECKING:
     from ctxprotocol.client.client import ContextClient
+
+# Internal HTTP status-check cadence for poll()/run_or_poll(). This is plain
+# HTTP polling below any LLM boundary — it costs no model tokens no matter how
+# frequent it is; a slower interval only delays completion detection. To keep
+# LLM-agent token costs down, minimize *model turns* (use run_or_poll()), not
+# HTTP polls.
+DEFAULT_QUERY_POLL_INTERVAL_MS = 5_000
+# Default client-side wait: slightly beyond the hosted 1800s compute ceiling
+# (Vercel extended max duration) that bounds every query path, so the client
+# observes the job's terminal state instead of giving up while the server is
+# still legitimately working.
+DEFAULT_QUERY_POLL_TIMEOUT_MS = 31 * 60_000
 
 
 class Query:
@@ -376,10 +389,18 @@ class Query:
     async def poll(
         self,
         job_id: str,
-        interval_ms: int = 2000,
-        timeout_ms: int = 15 * 60_000,
+        interval_ms: int = DEFAULT_QUERY_POLL_INTERVAL_MS,
+        timeout_ms: int = DEFAULT_QUERY_POLL_TIMEOUT_MS,
     ) -> QueryJobStatusResult:
-        """Poll a durable async query job until completion or failure."""
+        """Poll a durable async query job until completion or failure.
+
+        ``timeout_ms`` controls how long this client waits; the hosted job
+        itself is bounded by the 1800s server compute ceiling. If the status
+        endpoint reports the job exceeded the server-side window, the job is
+        terminal and should not be polled again. ``interval_ms`` is an HTTP
+        check cadence with no effect on LLM token usage — leave it at the
+        fast default.
+        """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout_ms / 1000
 
@@ -389,9 +410,58 @@ class Query:
                 return status
             if status.status == "failed":
                 raise ContextError(status.error or "Context query job failed")
-            await asyncio.sleep(interval_ms / 1000)
+            remaining_s = deadline - loop.time()
+            if remaining_s <= 0:
+                break
+            await asyncio.sleep(min(interval_ms / 1000, remaining_s))
 
         raise ContextError(f"Context query job polling timed out after {timeout_ms}ms")
+
+    async def run_or_poll(
+        self,
+        query: str,
+        tools: list[str] | None = None,
+        favorites_only: bool | None = None,
+        agent_model_id: AgentModelId | str | None = None,
+        response_shape: QueryResponseShape | None = None,
+        include_data: bool | None = None,
+        include_data_url: bool | None = None,
+        include_developer_trace: bool | None = None,
+        resume_from: QueryAttemptReference | dict[str, Any] | None = None,
+        fork_from: QueryForkReference | dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        interval_ms: int = DEFAULT_QUERY_POLL_INTERVAL_MS,
+        timeout_ms: int = DEFAULT_QUERY_POLL_TIMEOUT_MS,
+    ) -> QueryResult:
+        """Run a durable query job and wait internally for completion.
+
+        This is the recommended one-call helper for LLM agents: the entire
+        wait happens inside this single call (one model turn), instead of one
+        turn per ``get_status()`` check. It also avoids starting a duplicate
+        paid query after a client-side streaming timeout. The job is bounded
+        by the 1800s hosted compute ceiling.
+        """
+        job = await self.start(
+            query=query,
+            tools=tools,
+            favorites_only=favorites_only,
+            agent_model_id=agent_model_id,
+            response_shape=response_shape,
+            include_data=include_data,
+            include_data_url=include_data_url,
+            include_developer_trace=include_developer_trace,
+            resume_from=resume_from,
+            fork_from=fork_from,
+            idempotency_key=idempotency_key,
+        )
+        completed = await self.poll(
+            job.job_id,
+            interval_ms=interval_ms,
+            timeout_ms=timeout_ms,
+        )
+        if completed.status == "completed" and completed.result is not None:
+            return completed.result
+        raise ContextError(completed.error or "Context query job completed without a result")
 
     async def stream(
         self,
