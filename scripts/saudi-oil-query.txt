@@ -1,0 +1,16 @@
+A news outlet reported: Saudi Arabia slashed the August price of its flagship Arab Light crude for Asia by $11 a barrel — the biggest reduction in at least 26 years. The move reflects weaker oil markets, rising global supply, and intensifying competition among Gulf producers.
+
+I'm crafting a single tweet for a data-driven Twitter account (@ctxprotocol). The tweet needs one compelling data point and a chart that makes someone stop scrolling.
+
+Search your available tools for data relevant to this story. Use whatever tools fit best — prediction markets, equities intelligence, crypto data, crypto positioning, trading intelligence, or any combination. You don't need to use every tool; pick the ones that produce the most insight for THIS specific story.
+
+For each relevant market or asset you find, I need:
+- Current key metrics (oil price, energy stock price, odds, spread, flow — whatever the tool provides)
+- How has the key metric moved over the market's lifetime or let the backend determine the meaningful time range
+- Positioning/flow: who is on which side? Is smart money aligned with or against the narrative?
+- Catalyst date: when does this market resolve, or when is the next event that could move it? Include for every market/asset found.
+- Follow-up assessment: is this worth revisiting in a future post? What event would trigger a followup?
+
+Deliver a verdict: Was the market surprised by this news, or was it already priced in? What is the single most surprising data point? If you synthesized across multiple tools, what does the combined picture reveal that no single tool shows alone?
+
+Analysis and Chart: You are a master quantitative analyst. Based on all the data you've gathered, what is the most meaningful analysis? Create the most compelling possible chart(s). When the data spans multiple distinct dimensions, splitting into focused charts often produces clearer visuals. Each chart should capture one dimension of the story clearly. Charts must have clean labels, readable legends, and professional styling. Include a labeled chart summary for EACH chart produced, describing what data it shows and the key visual takeaway.

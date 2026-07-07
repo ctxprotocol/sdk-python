@@ -1,0 +1,1 @@
+Compare the current price and 7-day trend of Bitcoin and Ethereum, and find one prediction market related to Bitcoin's price this year with its current odds. Provide a short verdict on whether crypto positioning looks bullish or bearish. Text only, no charts needed.
