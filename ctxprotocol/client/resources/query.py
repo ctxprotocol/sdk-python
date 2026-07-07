@@ -265,6 +265,8 @@ class Query:
         resume_from: QueryAttemptReference | dict[str, Any] | None = None,
         fork_from: QueryForkReference | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        interval_ms: int = DEFAULT_QUERY_POLL_INTERVAL_MS,
+        timeout_ms: int = DEFAULT_QUERY_POLL_TIMEOUT_MS,
     ) -> QueryResult:
         """Run an agentic query and wait for the full response.
 
@@ -272,8 +274,12 @@ class Query:
         executes the discovery-first pipeline (up to 100 MCP calls per tool),
         and returns an AI-synthesized answer. Payment is settled after
         successful execution via deferred settlement.
-        Internally this follows the same SSE `done` path as `query.stream()`
-        so Python and TypeScript observe the same query runtime behavior.
+
+        Since 0.21.0 this is backed by the durable job path (``start()`` +
+        ``poll()``), so one call reliably survives the full 1800s hosted
+        compute ceiling and transient connection drops — no held-open SSE
+        connection to be killed by proxies or client timeouts. Use
+        ``stream()`` when you want real-time SSE events instead.
 
         Args:
             query: The natural-language question to answer
@@ -288,6 +294,8 @@ class Query:
             resume_from: Resume a prior durable query attempt
             fork_from: Fork a new durable query attempt from a previous attempt
             idempotency_key: Optional idempotency key (UUID recommended) for safe retries
+            interval_ms: Internal HTTP status-check cadence (costs no LLM tokens)
+            timeout_ms: Max client-side wait for the job's terminal state
 
         Returns:
             The complete query result with response text, tools used, and cost
@@ -311,9 +319,7 @@ class Query:
             ...     tools=["tool-uuid-1", "tool-uuid-2"],
             ... )
         """
-        terminal_error: QueryStreamErrorEvent | None = None
-
-        async for event in self.stream(
+        return await self.run_or_poll(
             query=query,
             tools=tools,
             favorites_only=favorites_only,
@@ -325,21 +331,9 @@ class Query:
             resume_from=resume_from,
             fork_from=fork_from,
             idempotency_key=idempotency_key,
-        ):
-            if event.type == "error":
-                terminal_error = event
-                continue
-
-            if event.type == "done":
-                return event.result
-
-        if terminal_error is not None:
-            raise ContextError(
-                message=terminal_error.error,
-                code=terminal_error.code,
-            )
-
-        raise ContextError("Streaming query ended before done event")
+            interval_ms=interval_ms,
+            timeout_ms=timeout_ms,
+        )
 
     async def start(
         self,
@@ -435,11 +429,11 @@ class Query:
     ) -> QueryResult:
         """Run a durable query job and wait internally for completion.
 
-        This is the recommended one-call helper for LLM agents: the entire
-        wait happens inside this single call (one model turn), instead of one
-        turn per ``get_status()`` check. It also avoids starting a duplicate
-        paid query after a client-side streaming timeout. The job is bounded
-        by the 1800s hosted compute ceiling.
+        ``run()`` delegates here since 0.21.0, so the two are equivalent;
+        ``run_or_poll()`` is kept as an explicit alias. The entire wait
+        happens inside this single call (one model turn for LLM agents),
+        instead of one turn per ``get_status()`` check, and the job is
+        bounded by the 1800s hosted compute ceiling.
         """
         job = await self.start(
             query=query,
@@ -460,7 +454,13 @@ class Query:
             timeout_ms=timeout_ms,
         )
         if completed.status == "completed" and completed.result is not None:
-            return completed.result
+            result = completed.result
+            if include_developer_trace and result.developer_trace is None:
+                result.developer_trace = self._build_synthetic_trace_from_run_result(
+                    result.tools_used,
+                    result.duration_ms,
+                )
+            return result
         raise ContextError(completed.error or "Context query job completed without a result")
 
     async def stream(

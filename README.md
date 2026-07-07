@@ -111,7 +111,7 @@ print(
 print(answer.orchestration_metrics)  # Optional first-pass / rediscovery metrics
 ```
 
-For long-running questions from LLM agents, use `run_or_poll()` so the entire wait happens inside one SDK call (one model turn):
+Since 0.21.0 `run()` is backed by the durable job path (`start()` + `poll()`): one call works the same for a 5-second lookup and a 30-minute chart build, with no held-open SSE connection for proxies or client timeouts to kill. `run_or_poll()` remains as an explicit alias:
 
 ```python
 answer = await client.query.run_or_poll(
@@ -211,7 +211,7 @@ See a full dual-surface client script in [`examples/two-surfaces-client.py`](./e
 | `api_key` | `str` | Yes | — | Your Context Protocol API key |
 | `base_url` | `str` | No | `https://www.ctxprotocol.com` | API base URL (for development) |
 | `request_timeout_seconds` | `float` | No | `300.0` | Timeout for non-streaming JSON API calls |
-| `stream_timeout_seconds` | `float` | No | `600.0` | Timeout for streaming API calls; also used by `client.query.run()` |
+| `stream_timeout_seconds` | `float` | No | `600.0` | Timeout for streaming API calls (`client.query.stream()`) |
 
 ```python
 # Production
@@ -304,7 +304,7 @@ closed = await client.tools.close_session("sess_123")
 
 Run an agentic query. The server applies the live librarian pipeline (`discover -> select -> iterative execute -> synthesize -> settle`) with up to 100 MCP calls per response turn, then returns the selected Query response contract (`answer_with_evidence` or `evidence_only`, default `answer_with_evidence`).
 
-`client.query.run()` buffers the same SSE transport used by `client.query.stream()` and returns the final `done` result. This keeps Python aligned with the TypeScript SDK and the live query runtime.
+Since 0.21.0, `client.query.run()` is backed by the durable job path (`start()` + `poll()`), so a single call reliably covers the full 1800s hosted compute ceiling and survives transient connection drops. This matches the TypeScript SDK. Use `client.query.stream()` when you want real-time SSE events.
 
 The query runtime now exposes a single managed executor surface.
 The server decides internal budgets, ambiguity handling, and exploration policy
@@ -345,7 +345,7 @@ When retrieval-first synthesis rollout is enabled server-side, full-data or trun
 
 #### `client.query.stream(query, tools?, agent_model_id?, include_data?, include_data_url?, include_developer_trace?, idempotency_key?)`
 
-Same as `run()` but streams events in real-time via SSE.
+Runs the same query pipeline as `run()` but over a live SSE connection, yielding events in real-time.
 
 Event types:
 - `tool-status`

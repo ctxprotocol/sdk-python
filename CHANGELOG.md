@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.21.0
+
+- `client.query.run()` is now backed by the durable job path (`start()` + `poll()`) instead of a held-open SSE connection. One call now reliably covers the full 1800s hosted compute ceiling and survives transient connection drops — the "sometimes works, sometimes times out on hard queries" failure mode is gone. `run()` accepts optional `interval_ms` / `timeout_ms` keyword arguments.
+- `run_or_poll()` is kept as an explicit alias of the same path, and now also synthesizes a fallback developer trace when `include_developer_trace` is set but the backend omits the trace (matching prior `run()` behavior).
+- `client.query.stream()` is unchanged and remains the real-time SSE surface.
+
+## 0.20.0
+
+- Poll defaults aligned with the hosted 1800s compute ceiling: `poll()`/`run_or_poll()` check status every 5 seconds over plain HTTP and wait up to 31 minutes by default.
+- Documented that HTTP polling costs no model tokens; model turns do.
+
 ## 0.19.1
 
 - Fixed `client.query.start()` returning `400 "Invalid query job request"` when called without explicit `tools`. The request body builder now omits optional fields (notably `tools`) when unset instead of serializing them as JSON `null`; the durable jobs endpoint's Zod schema rejects `null` for optional fields. `client.query.run()` and `client.query.stream()` were not failing (the `/api/v1/query` endpoint tolerates `null`), but are now consistent with the TS SDK and MCP behavior.
