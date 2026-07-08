@@ -1461,6 +1461,7 @@ QueryControllerStopReason = Literal[
     "bounded_runtime_budget",
     "bounded_same_endpoint_guardrail",
     "bounded_upstream_abort_guardrail",
+    "bounded_explicit_empty_result_guardrail",
     "capability_miss",
 ]
 QueryControllerIssueClass = Literal[
